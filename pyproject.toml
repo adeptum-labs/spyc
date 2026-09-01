@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spyc"
+version = "0.1.0.dev0"
+description = "Terminal viewer for browsing code bases: syntax colors, git history and coverage"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Adam Waldenberg, Adeptum AB", email = "info@adeptum.se" }]
+requires-python = ">=3.11"
+dependencies = ["textual>=8.2", "tree-sitter>=0.25", "pygments>=2.19"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio"]
+
+[project.scripts]
+spyc = "spyc.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
