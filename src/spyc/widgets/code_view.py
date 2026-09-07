@@ -105,6 +105,12 @@ class CodeView(ScrollView, can_focus=True):
         if document.language is not None and not document.plain:
             self._highlight(document)
 
+    def replace(self, document: Document) -> None:
+        row, column, offset = self.cursor_row, self.cursor_column, self.scroll_offset
+        self.show(document, self.display_path)
+        self.scroll_to(offset.x, offset.y, animate=False, immediate=True)
+        self._move_to(row, column)
+
     # The parse runs off the UI thread so a big file shows at once as plain text.
     # A failure only costs the colors, so it must not end the session.
     @work(thread=True, exclusive=True, group="highlight", exit_on_error=False)

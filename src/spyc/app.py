@@ -37,14 +37,18 @@ from spyc.history import JumpHistory, Place
 from spyc.location import Location
 from spyc.overview import Overview, build_overview
 from spyc.picking import Choice
+from spyc.screens.help import HelpScreen
 from spyc.screens.picker import Picker
 from spyc.screens.prompt import Prompt
 from spyc.state import StateStore
 from spyc.tree_model import TreeModel
 from spyc.widgets.code_view import CodeView
 from spyc.widgets.file_tree import FileTree
+from spyc.widgets.markdown_pane import MarkdownPane
 from spyc.widgets.overview_pane import OverviewPane
 from spyc.widgets.status_bar import StatusBar
+
+RELOAD_INTERVAL = 2.0
 
 
 class SpycApp(App):
@@ -65,6 +69,9 @@ class SpycApp(App):
         Binding("i", "overview", "Overview"),
         Binding("backslash", "toggle_sidebar", "Sidebar"),
         Binding("full_stop", "toggle_ignored", "Ignored"),
+        Binding("r", "toggle_markdown", "Rendered"),
+        Binding("R", "refresh_project", "Refresh"),
+        Binding("question_mark", "help", "Help"),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -88,6 +95,7 @@ class SpycApp(App):
             with Vertical(id="main"):
                 yield OverviewPane(id="overview")
                 yield CodeView(id="code")
+                yield MarkdownPane(id="rendered")
                 yield StatusBar()
         yield Footer()
 
@@ -110,10 +118,20 @@ class SpycApp(App):
     def _status(self) -> StatusBar:
         return self.screen_stack[0].query_one(StatusBar)
 
+    @property
+    def _rendered(self) -> MarkdownPane:
+        return self.screen_stack[0].query_one(MarkdownPane)
+
     def on_mount(self) -> None:
+        saved_theme = self.store.get("theme")
+        if saved_theme in self.available_themes:
+            self.theme = saved_theme
+        self.theme_changed_signal.subscribe(self, lambda theme: self.store.set("theme", theme.name))
         self.sub_title = str(self.project_root)
         self._code.display = False
+        self._rendered.display = False
         self._tree.display = bool(self.store.get("sidebar", True))
+        self.set_interval(RELOAD_INTERVAL, self._check_for_changes)
         self._load_index()
         start = self._start_location
         if start is not None and (self.project_root / start.path).is_file():
@@ -159,6 +177,7 @@ class SpycApp(App):
         code = self._code
         code.show(document, path)
         self._overview_pane.display = False
+        self._rendered.display = False
         code.display = True
         if line:
             self.call_after_refresh(code.goto, line)
@@ -236,7 +255,7 @@ class SpycApp(App):
         if destination is not None:
             self._display_file(destination.path, destination.line)
 
-    def action_edit(self) -> None:
+    async def action_edit(self) -> None:
         code = self._viewing()
         if code is None:
             return
@@ -245,6 +264,50 @@ class SpycApp(App):
             self.notify("Set $VISUAL or $EDITOR to edit files", severity="warning")
             return
         self._run_editor(command)
+        await self._check_for_changes()
+
+    # A stat every couple of seconds needs no dependency and works on network mounts, unlike inotify.
+    async def _check_for_changes(self) -> None:
+        document = self._code.document
+        if document is None:
+            return
+        try:
+            changed = document.path.stat().st_mtime != document.mtime
+        except OSError:
+            return
+        if changed:
+            await self._reload()
+
+    async def _reload(self) -> None:
+        code = self._code
+        try:
+            document = load_document(code.document.path)
+        except OSError:
+            return
+        code.replace(document)
+        if self._rendered.display:
+            await self._rendered.show(document.text)
+        self._refresh_status()
+
+    def action_refresh_project(self) -> None:
+        self._load_index()
+
+    async def action_toggle_markdown(self) -> None:
+        rendered, code = self._rendered, self._code
+        if rendered.display:
+            rendered.display, code.display = False, True
+            code.focus()
+            return
+        document = code.document if code.display else None
+        if document is None or document.language is None or document.language.id != "markdown":
+            self.notify("Only Markdown files can be rendered")
+            return
+        await rendered.show(document.text)
+        code.display, rendered.display = False, True
+        rendered.focus()
+
+    def action_help(self) -> None:
+        self.push_screen(HelpScreen())
 
     def _run_editor(self, command: list[str]) -> None:
         with self.suspend():
@@ -259,6 +322,7 @@ class SpycApp(App):
 
     def action_overview(self) -> None:
         self._code.display = False
+        self._rendered.display = False
         self._overview_pane.display = True
         self._tree.focus()
 
