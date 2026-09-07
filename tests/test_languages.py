@@ -18,6 +18,8 @@
 # Contact: info@adeptum.se
 
 
+import time
+
 import pytest
 from pygments.lexers import get_lexer_by_name
 
@@ -46,6 +48,18 @@ def test_shebang_names_the_interpreter(first_line, expected):
 def test_unknown_extensions_fall_back_to_pygments():
     ruby = detect_language("script.rb")
     assert (ruby.name, ruby.grammar, ruby.lexer) == ("Ruby", None, "ruby")
+
+
+def test_extensionless_files_are_recognised_by_exact_name_only():
+    assert detect_language("Rakefile").name == "Ruby"
+    assert detect_language("d41d8cd98f00b204e9800998ecf8427e") is None
+
+
+def test_thousands_of_odd_file_names_are_classified_quickly():
+    started = time.perf_counter()
+    for number in range(20_000):
+        detect_language(f"objects/{number:05d}abcdef")
+    assert time.perf_counter() - started < 1.0
 
 
 def test_plain_text_and_unknown_files_have_no_language():

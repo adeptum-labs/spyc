@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import PurePosixPath
 
-from pygments.lexers import get_lexer_for_filename
+from pygments.lexers import get_all_lexers, get_lexer_for_filename
 from pygments.util import ClassNotFound
 
 
@@ -95,7 +95,22 @@ def detect_language(path: str, first_line: str = "") -> Language | None:
     name = PurePosixPath(path).name
     suffix = PurePosixPath(name).suffix.lower()
     return (BY_FILENAME.get(name) or BY_FILENAME.get(name.split(".", 1)[0]) or BY_EXTENSION.get(suffix)
-            or _by_interpreter(first_line) or _pygments_language(f"x{suffix}" if suffix else name))
+            or _by_interpreter(first_line) or _pygments_language(_pygments_key(name, suffix)))
+
+
+# Pygments matches a file name by scanning every lexer's patterns, which costs
+# milliseconds. Names with an extension are looked up by that extension, which
+# repeats; names without one only when a lexer names that file exactly.
+def _pygments_key(name: str, suffix: str) -> str | None:
+    if suffix:
+        return f"x{suffix}"
+    return name if name in _exact_pygments_names() else None
+
+
+@cache
+def _exact_pygments_names() -> frozenset[str]:
+    return frozenset(pattern for _, _, patterns, _ in get_all_lexers() for pattern in patterns
+                     if not any(char in pattern for char in "*?["))
 
 
 def _by_interpreter(first_line: str) -> Language | None:
@@ -110,7 +125,9 @@ def _by_interpreter(first_line: str) -> Language | None:
 # Pygments scans every lexer's filename patterns on each call, so the lookup
 # is cached per extension; large trees would otherwise take seconds.
 @cache
-def _pygments_language(filename: str) -> Language | None:
+def _pygments_language(filename: str | None) -> Language | None:
+    if filename is None:
+        return None
     try:
         lexer = get_lexer_for_filename(filename)
     except ClassNotFound:
