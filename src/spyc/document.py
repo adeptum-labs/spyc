@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from spyc.languages import Language, detect_language
+from spyc.printable import printable
 
 FILE_LIMIT = 50 * 1024 * 1024
 HIGHLIGHT_LIMIT = 2 * 1024 * 1024
@@ -50,7 +51,8 @@ def load_document(path: Path) -> Document:
     data = path.read_bytes()
     if b"\0" in data[:BINARY_PROBE]:
         return Document(path, (), None, status.st_mtime, notice=f"Binary file, {len(data):,} bytes")
-    lines = [line.removesuffix("\r") for line in data.decode("utf-8-sig", errors="replace").split("\n")]
+    text = data.decode("utf-8-sig", errors="replace").replace("\r\n", "\n")
+    lines = printable(text, keep_newlines=True).split("\n")
     if len(lines) > 1 and lines[-1] == "":
         lines.pop()
     plain = len(data) > HIGHLIGHT_LIMIT or any(len(line) > LONG_LINE for line in lines)

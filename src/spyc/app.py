@@ -25,7 +25,8 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Header
+from textual.widget import Widget
+from textual.widgets import Footer, Header, OptionList
 from textual.worker import Worker, WorkerState
 
 from spyc.document import load_document
@@ -37,6 +38,7 @@ from spyc.history import JumpHistory, Place
 from spyc.location import Location
 from spyc.overview import Overview, build_overview
 from spyc.picking import Choice
+from spyc.printable import printable
 from spyc.screens.help import HelpScreen
 from spyc.screens.picker import Picker
 from spyc.screens.prompt import Prompt
@@ -49,6 +51,7 @@ from spyc.widgets.overview_pane import OverviewPane
 from spyc.widgets.status_bar import StatusBar
 
 RELOAD_INTERVAL = 2.0
+MARKDOWN_LIMIT = 50_000
 
 
 class SpycApp(App):
@@ -86,6 +89,7 @@ class SpycApp(App):
         self._max_files = max_files
         self._matcher: PathMatcher | None = None
         self._show_ignored = False
+        self._index_generation = 0
         self._last_query = ""
 
     def compose(self) -> ComposeResult:
@@ -127,12 +131,12 @@ class SpycApp(App):
         if saved_theme in self.available_themes:
             self.theme = saved_theme
         self.theme_changed_signal.subscribe(self, lambda theme: self.store.set("theme", theme.name))
-        self.sub_title = str(self.project_root)
+        self.sub_title = printable(str(self.project_root))
         self._code.display = False
         self._rendered.display = False
         self._tree.display = bool(self.store.get("sidebar", True))
         self.set_interval(RELOAD_INTERVAL, self._check_for_changes)
-        self._load_index()
+        self._reload_index()
         start = self._start_location
         if start is not None and (self.project_root / start.path).is_file():
             self.open_file(start.path, start.line)
@@ -141,13 +145,22 @@ class SpycApp(App):
 
     # The index is built off the UI thread: a large tree takes seconds, and the
     # window must be usable, and a file openable, while it is read.
+    # A thread cannot be stopped once it runs, so an index that was replaced by
+    # a newer request is recognised by its generation and dropped when it lands.
+    def _reload_index(self) -> None:
+        self._index_generation += 1
+        self._load_index(self._index_generation, self._show_ignored)
+
     @work(thread=True, exclusive=True, group="index", exit_on_error=False)
-    def _load_index(self) -> None:
-        index = build_index(self.project_root, self._show_ignored, self._max_files)
-        self.call_from_thread(self._index_ready, index, TreeModel(index.paths), build_overview(index),
+    def _load_index(self, generation: int, show_ignored: bool) -> None:
+        index = build_index(self.project_root, show_ignored, self._max_files)
+        self.call_from_thread(self._index_ready, generation, index, TreeModel(index.paths), build_overview(index),
                               PathMatcher(index.paths))
 
-    def _index_ready(self, index: FileIndex, model: TreeModel, overview: Overview, matcher: PathMatcher) -> None:
+    def _index_ready(self, generation: int, index: FileIndex, model: TreeModel, overview: Overview,
+                     matcher: PathMatcher) -> None:
+        if generation != self._index_generation:
+            return
         self.overview, self._matcher = overview, matcher
         self._tree.load(model)
         self._overview_pane.show(overview)
@@ -161,7 +174,7 @@ class SpycApp(App):
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.state is WorkerState.ERROR and event.worker.group == "index":
-            self.notify(f"Could not read the project files: {event.worker.error}", severity="error")
+            self.notify(f"Could not read the project files: {event.worker.error}", severity="error", markup=False)
 
     def open_file(self, path: str, line: int | None = None) -> None:
         leaving = self._current_place()
@@ -172,7 +185,7 @@ class SpycApp(App):
         try:
             document = load_document(self.project_root / path)
         except OSError as error:
-            self.notify(f"Cannot open {path}: {error.strerror or error}", severity="error")
+            self.notify(f"Cannot open {printable(path)}: {error.strerror or error}", severity="error", markup=False)
             return False
         code = self._code
         code.show(document, path)
@@ -231,7 +244,7 @@ class SpycApp(App):
         if not query:
             code.clear_search()
         elif code.search(query) == 0:
-            self.notify(f"No matches for {query!r}", severity="warning")
+            self.notify(f"No matches for {printable(query)!r}", severity="warning", markup=False)
         self._refresh_status()
 
     def action_goto_line(self) -> None:
@@ -261,9 +274,11 @@ class SpycApp(App):
             return
         command = editor_command(self.project_root / code.display_path, code.cursor_row + 1)
         if command is None:
-            self.notify("Set $VISUAL or $EDITOR to edit files", severity="warning")
+            self.notify("Set $VISUAL or $EDITOR to edit files", severity="warning", markup=False)
             return
-        self._run_editor(command)
+        error = self._run_editor(command)
+        if error is not None:
+            self.notify(f"Could not start the editor: {error}", severity="error", markup=False)
         await self._check_for_changes()
 
     # A stat every couple of seconds needs no dependency and works on network mounts, unlike inotify.
@@ -286,11 +301,14 @@ class SpycApp(App):
             return
         code.replace(document)
         if self._rendered.display:
-            await self._rendered.show(document.text)
+            if len(document.text) > MARKDOWN_LIMIT:
+                self._rendered.display, code.display = False, True
+            else:
+                await self._rendered.show(document.text)
         self._refresh_status()
 
     def action_refresh_project(self) -> None:
-        self._load_index()
+        self._reload_index()
 
     async def action_toggle_markdown(self) -> None:
         rendered, code = self._rendered, self._code
@@ -302,6 +320,9 @@ class SpycApp(App):
         if document is None or document.language is None or document.language.id != "markdown":
             self.notify("Only Markdown files can be rendered")
             return
+        if len(document.text) > MARKDOWN_LIMIT:
+            self.notify("Too large to render; showing the source", severity="warning")
+            return
         await rendered.show(document.text)
         code.display, rendered.display = False, True
         rendered.focus()
@@ -309,16 +330,22 @@ class SpycApp(App):
     def action_help(self) -> None:
         self.push_screen(HelpScreen())
 
-    def _run_editor(self, command: list[str]) -> None:
+    # A command that cannot start must come back as a message: an exception
+    # inside suspend() would leave the terminal without the application mode.
+    def _run_editor(self, command: list[str]) -> str | None:
         with self.suspend():
-            subprocess.run(command, check=False)
+            try:
+                subprocess.run(command, check=False)
+            except OSError as error:
+                return str(error)
+        return None
 
     def action_copy_location(self) -> None:
         code = self._viewing()
         if code is not None:
             location = f"{code.display_path}:{code.cursor_row + 1}"
             self.copy_to_clipboard(location)
-            self.notify(f"Copied {location}")
+            self.notify(f"Copied {printable(location)}", markup=False)
 
     def action_overview(self) -> None:
         self._code.display = False
@@ -334,7 +361,7 @@ class SpycApp(App):
     def action_toggle_ignored(self) -> None:
         self._show_ignored = not self._show_ignored
         self.notify("Showing ignored files" if self._show_ignored else "Hiding ignored files")
-        self._load_index()
+        self._reload_index()
 
     # Every screen binds Tab to app.focus_next, which is what runs before any
     # app-level key binding could, so the pane switch replaces that action.
@@ -352,6 +379,13 @@ class SpycApp(App):
             self._switch_pane()
 
     def _switch_pane(self) -> None:
-        tree, code = self._tree, self._code
-        if tree.display and code.display:
-            (tree if code.has_focus else code).focus()
+        tree, main = self._tree, self._main_pane()
+        (main if tree.has_focus or not tree.display else tree).focus()
+
+    def _main_pane(self) -> Widget:
+        if self._code.display:
+            return self._code
+        if self._rendered.display:
+            return self._rendered
+        key_files = self._overview_pane.query_one("#key-files", OptionList)
+        return key_files if key_files.display else self._overview_pane

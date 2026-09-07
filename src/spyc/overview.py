@@ -25,6 +25,7 @@ from rich.text import Text
 
 from spyc.file_index import MAX_INDEXED_FILES, FileIndex
 from spyc.languages import detect_language
+from spyc.printable import printable
 from spyc.project import KeyFile, detect_build_systems, key_files
 
 STAT_LIMIT = 50_000
@@ -89,13 +90,14 @@ def _readme(root: Path, keys: list[KeyFile]) -> str | None:
             data = handle.read(README_BYTES)
     except OSError:
         return None
-    return "\n".join(data.decode("utf-8", errors="replace").splitlines()[:README_LINES])
+    text = printable(data.decode("utf-8", errors="replace"), keep_newlines=True)
+    return "\n".join(text.splitlines()[:README_LINES])
 
 
 def summary_text(overview: Overview) -> Text:
     text = Text()
-    text.append(f"{overview.name}\n", style="bold")
-    text.append(f"{overview.root}\n", style="dim")
+    text.append(f"{printable(overview.name)}\n", style="bold")
+    text.append(f"{printable(str(overview.root))}\n", style="dim")
     text.append(" · ".join([f"{overview.file_count:,} files", *overview.build_systems]) + "\n")
     if overview.truncated:
         text.append(f"The file list is capped at {MAX_INDEXED_FILES:,} files.\n", style="yellow")

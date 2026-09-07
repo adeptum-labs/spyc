@@ -27,6 +27,7 @@ from spyc.document import Document, load_document
 from spyc.fuzzy import Match, PathMatcher
 from spyc.location import split_line_suffix
 from spyc.picking import Item
+from spyc.printable import printable
 
 
 class FilePickerSource:
@@ -47,7 +48,7 @@ class FilePickerSource:
 
 
 def _label(match: Match) -> Text:
-    label = Text(match.path, no_wrap=True, overflow="ellipsis")
+    label = Text(printable(match.path), no_wrap=True, overflow="ellipsis")
     label.stylize("dim", 0, match.path.rfind("/") + 1)
     for position in match.positions:
         label.stylize("bold yellow", position, position + 1)

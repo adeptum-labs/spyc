@@ -72,3 +72,12 @@ async def test_the_status_bar_keeps_what_it_shows(tmp_path):
         bar = app.query_one(StatusBar)
         bar.show("a.py", "Python", 0, 0, 1)
         assert bar.text == "a.py · Python · 1:1 of 1"
+
+
+async def test_the_status_bar_shows_brackets_in_a_path_as_they_are(tmp_path):
+    app = PaneApp(overview_of(tmp_path, {"a.py": "x"}))
+    async with app.run_test(size=(100, 30)) as pilot:
+        bar = app.query_one(StatusBar)
+        bar.show("app/[id]/page.tsx", "TSX", 0, 0, 1)
+        await pilot.pause()
+        assert bar.render().plain.startswith("app/[id]/page.tsx")

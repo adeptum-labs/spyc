@@ -53,15 +53,31 @@ def _git_lines(root: Path, *arguments: str) -> list[str] | None:
     return [path for path in result.stdout.decode("utf-8", errors="replace").split("\0") if path]
 
 
+GITLINK = "160000"
+SYMLINK = "120000"
+
+
 # `--cached` still lists files deleted from the working tree, and lists a
-# conflicted file once per stage, so both are filtered out here.
+# conflicted file once per stage, so both are filtered out here. Submodules,
+# nested repositories and links to directories are directories, not files.
 def _git_files(root: Path) -> list[str] | None:
     listed = _git_lines(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
     deleted = _git_lines(root, "ls-files", "-z", "--deleted")
-    if listed is None or deleted is None:
+    staged = _git_lines(root, "ls-files", "-z", "--stage")
+    if listed is None or deleted is None or staged is None:
         return None
     gone = set(deleted)
-    return [path for path in dict.fromkeys(listed) if path not in gone]
+    gone.update(path for path, mode in (_stage_entry(entry) for entry in staged) if _is_directory(root, path, mode))
+    return [path for path in dict.fromkeys(listed) if path not in gone and not path.endswith("/")]
+
+
+def _stage_entry(entry: str) -> tuple[str, str]:
+    meta, _, path = entry.partition("\t")
+    return path, meta.split(" ", 1)[0]
+
+
+def _is_directory(root: Path, path: str, mode: str) -> bool:
+    return mode == GITLINK or (mode == SYMLINK and (root / path).is_dir())
 
 
 # Directory symlinks are never entered, so a link back to an ancestor cannot loop.

@@ -18,11 +18,19 @@
 # Contact: info@adeptum.se
 
 
-from spyc.printable import printable
+TAB = 9
+NEWLINE = 10
+DELETE = 0x7F
+C1_CONTROLS = range(0x80, 0xA0)
+
+# Text from files goes to the terminal as it is, so a control character in it is
+# a command to the terminal (clear the screen, set the clipboard). Each one is
+# shown as its symbol from the Control Pictures block instead, one for one, so
+# columns and offsets do not shift.
+_CONTROLS = {code: chr(0x2400 + code) for code in range(32) if code != TAB} | {DELETE: "␡"}
+_CONTROLS |= {code: "�" for code in C1_CONTROLS}
+_KEEPING_NEWLINES = {code: symbol for code, symbol in _CONTROLS.items() if code != NEWLINE}
 
 
-def status_line(path: str | None, language: str | None, row: int, column: int, total: int, extra: str = "") -> str:
-    if path is None:
-        return ""
-    parts = [printable(path), language or "Plain text", f"{row + 1}:{column + 1} of {total}"]
-    return " · ".join([*parts, extra] if extra else parts)
+def printable(text: str, *, keep_newlines: bool = False) -> str:
+    return text.translate(_KEEPING_NEWLINES if keep_newlines else _CONTROLS)

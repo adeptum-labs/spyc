@@ -80,6 +80,13 @@ def test_typing_and_backspacing_gives_the_same_results_as_a_fresh_search():
         assert typed.search(query) == PathMatcher(PATHS).search(query)
 
 
+def test_a_query_that_almost_matches_every_path_stays_fast():
+    paths = [("reader/" * 20) + f"{number}.txt" for number in range(20_000)]
+    started = time.perf_counter()
+    assert PathMatcher(paths).search("readm") == []
+    assert time.perf_counter() - started < 2.0
+
+
 def test_a_hundred_thousand_paths_are_searched_in_reasonable_time():
     paths = [f"module{number % 500}/package{number % 37}/file{number}.py" for number in range(100_000)]
     matcher = PathMatcher(paths)

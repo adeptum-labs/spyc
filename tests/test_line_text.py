@@ -65,3 +65,8 @@ def test_cursor_on_a_wide_character_uses_character_indices():
 def test_current_match_differs_from_other_matches():
     text = build_line("aa aa", [], THEME, matches=[(0, 2), (3, 5)], current_match=(3, 5))
     assert styles(text) == [(0, 2, THEME.match), (3, 5, THEME.current_match)]
+
+
+def test_spans_reaching_past_the_end_of_the_line_are_clipped():
+    text = build_line("ab", [Span(1, 9, "number"), Span(5, 6, "number")], THEME)
+    assert styles(text) == [(1, 2, Style(color="red"))]

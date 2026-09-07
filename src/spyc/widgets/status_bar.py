@@ -18,6 +18,7 @@
 # Contact: info@adeptum.se
 
 
+from rich.text import Text
 from textual.widgets import Static
 
 from spyc.status import status_line
@@ -32,4 +33,4 @@ class StatusBar(Static):
 
     def show(self, path: str | None, language: str | None, row: int, column: int, total: int, extra: str = "") -> None:
         self.text = status_line(path, language, row, column, total, extra)
-        self.update(self.text)
+        self.update(Text(self.text))

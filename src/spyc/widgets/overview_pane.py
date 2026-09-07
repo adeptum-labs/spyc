@@ -25,6 +25,7 @@ from textual.widgets import Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 from spyc.overview import Overview, summary_text
+from spyc.printable import printable
 from spyc.widgets.file_tree import FileTree
 
 
@@ -51,7 +52,8 @@ class OverviewPane(VerticalScroll):
         self.query_one("#summary", Static).update(summary_text(overview))
         options = self.query_one("#key-files", OptionList)
         options.clear_options()
-        options.add_options([Option(Text.assemble((f"{key.kind:<12}", "dim"), key.path)) for key in overview.key_files])
+        options.add_options([Option(Text.assemble((f"{key.kind:<12}", "dim"), printable(key.path)))
+                             for key in overview.key_files])
         options.highlighted = 0 if overview.key_files else None
         options.display = self.query_one("#key-files-heading").display = bool(overview.key_files)
         readme = self.query_one("#readme", Static)

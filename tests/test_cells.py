@@ -18,7 +18,12 @@
 # Contact: info@adeptum.se
 
 
-from spyc.cells import cell_of_char, char_at_cell, expand_tabs, line_cells
+import time
+
+import pytest
+
+import spyc.cells
+from spyc.cells import cell_of_char, char_at_cell, expand_tabs, line_cells, widest_cells
 
 
 def test_ascii_columns_are_cells():
@@ -55,3 +60,32 @@ def test_expand_tabs_is_the_identity_without_tabs():
 
 def test_tab_stops_follow_wide_characters():
     assert expand_tabs("日\tx")[0] == "日  x"
+
+
+def test_the_widest_line_is_measured_in_cells_not_characters():
+    assert widest_cells(["a" * 50, "\t" * 5 + "b" * 40]) == 60
+    assert widest_cells(["a" * 30, "日" * 20]) == 40
+    assert widest_cells([]) == 0
+
+
+@pytest.mark.parametrize("line", [
+    "".join("é\t日x" [index % 4] for index in range(300)),
+    "x" * 100 + "日" * 100 + "\t" * 20 + "y" * 100,
+])
+def test_long_lines_agree_with_the_plain_walk(line, monkeypatch):
+    expected = [cell_of_char(line, column) for column in range(len(line) + 3)]
+    expected_chars = [char_at_cell(line, cell) for cell in range(expected[-1] + 3)]
+    monkeypatch.setattr(spyc.cells, "CHECKPOINT", 8)
+    spyc.cells._checkpoints.cache_clear()
+    assert [cell_of_char(line, column) for column in range(len(line) + 3)] == expected
+    assert [char_at_cell(line, cell) for cell in range(expected[-1] + 3)] == expected_chars
+
+
+def test_positions_deep_in_a_huge_non_ascii_line_are_found_quickly():
+    line = "x" * 600_000 + "é" + "y" * 600_000
+    line_cells(line)
+    started = time.perf_counter()
+    for _ in range(200):
+        cell_of_char(line, 1_100_000)
+        char_at_cell(line, 1_100_000)
+    assert time.perf_counter() - started < 1.0

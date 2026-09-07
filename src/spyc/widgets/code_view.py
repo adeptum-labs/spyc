@@ -29,7 +29,7 @@ from textual.message import Message
 from textual.scroll_view import ScrollView
 from textual.strip import Strip
 
-from spyc.cells import cell_of_char, char_at_cell, line_cells
+from spyc.cells import cell_of_char, char_at_cell, widest_cells
 from spyc.document import Document
 from spyc.gutters import Gutter, LineNumberGutter
 from spyc.line_text import build_line
@@ -97,8 +97,7 @@ class CodeView(ScrollView, can_focus=True):
         self.document, self.display_path = document, display_path
         self._highlighter = PlainHighlighter()
         self._gutters = [LineNumberGutter(len(document.lines))]
-        widest = max(document.lines, key=len, default="")
-        self.virtual_size = Size(line_cells(widest) + 1 + self.gutter_width, max(1, len(document.lines)))
+        self.virtual_size = Size(widest_cells(document.lines) + 1 + self.gutter_width, max(1, len(document.lines)))
         self.scroll_to(0, 0, animate=False, immediate=True)
         self.clear_search()
         self._move_to(0, 0)

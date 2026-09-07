@@ -36,8 +36,9 @@ def build_line(line: str, spans: Sequence[Span], theme: CodeTheme, *, is_cursor_
     text = Text(expanded, style=theme.cursor_line if is_cursor_row else theme.base, no_wrap=True, end="")
     for span in spans:
         style = theme.syntax.style_for(span.capture)
-        if style is not None:
-            text.stylize(style, starts[span.start], starts[span.end])
+        end = min(span.end, len(line))
+        if style is not None and span.start < end:
+            text.stylize(style, starts[span.start], starts[end])
     for start, end in matches:
         text.stylize(theme.current_match if (start, end) == current_match else theme.match, starts[start], starts[end])
     if cursor_column is not None and cursor_column >= len(line):

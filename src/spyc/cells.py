@@ -18,30 +18,59 @@
 # Contact: info@adeptum.se
 
 
-from collections.abc import Sequence
+from bisect import bisect_right
+from collections.abc import Iterable, Sequence
+from functools import lru_cache
 
 from rich.cells import cell_len
 
 TAB_SIZE = 4
+CHECKPOINT = 2048
 
 
 def _width(char: str, position: int) -> int:
     return TAB_SIZE - position % TAB_SIZE if char == "\t" else cell_len(char)
 
 
+def _is_simple(line: str) -> bool:
+    return line.isascii() and "\t" not in line
+
+
+# Walking a minified bundle of megabytes character by character on every
+# cursor move would take seconds, so long lines are measured once at every
+# CHECKPOINT characters and a position is found from the nearest checkpoint.
+@lru_cache(maxsize=4)
+def _checkpoints(line: str) -> tuple[list[int], list[int]]:
+    chars, cells, position = [0], [0], 0
+    for index, char in enumerate(line, 1):
+        position += _width(char, position)
+        if index % CHECKPOINT == 0:
+            chars.append(index)
+            cells.append(position)
+    return chars, cells
+
+
 def cell_of_char(line: str, column: int) -> int:
-    if line.isascii() and "\t" not in line:
+    if _is_simple(line):
         return column
-    position = 0
-    for char in line[:column]:
+    start, position = 0, 0
+    if len(line) > CHECKPOINT:
+        chars, cells = _checkpoints(line)
+        nearest = min(bisect_right(chars, column) - 1, len(chars) - 1)
+        start, position = chars[nearest], cells[nearest]
+    for char in line[start:column]:
         position += _width(char, position)
     return position + max(0, column - len(line))
 
 
 def char_at_cell(line: str, cell: int) -> int:
-    position = 0
-    for index, char in enumerate(line):
-        width = _width(char, position)
+    start, position = 0, 0
+    if len(line) > CHECKPOINT:
+        chars, cells = _checkpoints(line)
+        nearest = max(bisect_right(cells, cell) - 1, 0)
+        start, position = chars[nearest], cells[nearest]
+    for index in range(start, len(line)):
+        width = _width(line[index], position)
         if position + width > cell:
             return index
         position += width
@@ -50,6 +79,12 @@ def char_at_cell(line: str, cell: int) -> int:
 
 def line_cells(line: str) -> int:
     return cell_of_char(line, len(line))
+
+
+def widest_cells(lines: Iterable[str]) -> int:
+    lines = list(lines)
+    widest = max(map(len, lines), default=0)
+    return max([widest, *(line_cells(line) for line in lines if not _is_simple(line))])
 
 
 def expand_tabs(line: str) -> tuple[str, Sequence[int]]:

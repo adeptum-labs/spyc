@@ -19,11 +19,9 @@
 
 
 import heapq
-import re
 from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from functools import cache
 from itertools import chain, islice
 
 BASENAME_PREFIX = 400
@@ -40,9 +38,15 @@ class Match:
     positions: tuple[int, ...]
 
 
-@cache
-def _scattered(term: str) -> re.Pattern:
-    return re.compile(".*?".join(re.escape(char) for char in term), re.DOTALL)
+# A regular expression such as a.*?b.*?c backtracks badly when the last
+# character is missing, and this runs for every path on every keystroke.
+def _scattered(term: str, lower: str) -> bool:
+    position = 0
+    for char in term:
+        position = lower.find(char, position) + 1
+        if position == 0:
+            return False
+    return True
 
 
 def _term_score(lower: str, basename_start: int, term: str) -> int | None:
@@ -54,7 +58,7 @@ def _term_score(lower: str, basename_start: int, term: str) -> int | None:
     index = lower.find(term)
     if index >= 0:
         return PATH_SUBSTRING - min(index, 100)
-    return SCATTERED if _scattered(term).search(lower) else None
+    return SCATTERED if _scattered(term, lower) else None
 
 
 def _score(lower: str, terms: Sequence[str]) -> int | None:

@@ -70,3 +70,15 @@ def test_tracked_dangling_symlink_is_still_listed(git_repo):
 def test_unusual_file_names_survive(git_repo):
     write_files(git_repo, {"with space ü.py": ""})
     assert "with space ü.py" in build_index(git_repo).paths
+
+
+def test_submodules_nested_repositories_and_directory_links_are_not_files(git_repo):
+    git(git_repo, "update-index", "--add", "--cacheinfo", "160000,1111111111111111111111111111111111111111,sub")
+    (git_repo / "etc-link").symlink_to("/etc", target_is_directory=True)
+    (git_repo / "file-link").symlink_to("README.md")
+    git(git_repo, "add", "etc-link", "file-link")
+    write_files(git_repo / "nested", {"x.py": ""})
+    git(git_repo / "nested", "init", "-q")
+    paths = build_index(git_repo).paths
+    assert "file-link" in paths and "README.md" in paths
+    assert not {"sub", "etc-link", "nested", "nested/"} & set(paths)

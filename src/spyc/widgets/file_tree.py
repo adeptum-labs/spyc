@@ -24,6 +24,7 @@ from textual.message import Message
 from textual.widgets import Tree
 from textual.widgets.tree import TreeNode
 
+from spyc.printable import printable
 from spyc.tree_model import Entry, TreeModel
 
 
@@ -63,7 +64,7 @@ class FileTree(Tree[Entry]):
             return
         self._populated.add(node.id)
         for entry in self._model.children(node.data.path if node.data else ""):
-            label = Text(entry.name, style="bold" if entry.is_dir else "")
+            label = Text(printable(entry.name), style="bold" if entry.is_dir else "")
             if entry.is_dir:
                 node.add(label, data=entry, allow_expand=True)
             else:
