@@ -22,7 +22,59 @@ import importlib.metadata
 
 import pytest
 
+import spyc.__main__ as entry
 from spyc.__main__ import main
+from spyc.location import Location
+
+
+class RecordingApp:
+    created = []
+
+    def __init__(self, root, start=None):
+        RecordingApp.created.append((root, start))
+
+    def run(self):
+        pass
+
+
+@pytest.fixture
+def recorded(monkeypatch):
+    RecordingApp.created = []
+    monkeypatch.setattr(entry, "SpycApp", RecordingApp, raising=False)
+    return RecordingApp.created
+
+
+def test_a_subdirectory_opens_the_project_with_that_directory_revealed(git_repo, recorded):
+    assert entry.main([str(git_repo / "src")]) == 0
+    assert recorded == [(git_repo.resolve(), Location("src", None))]
+
+
+def test_a_file_with_a_line_opens_at_that_line(git_repo, recorded):
+    entry.main([f"{git_repo}/src/app/main.py:2"])
+    assert recorded == [(git_repo.resolve(), Location("src/app/main.py", 2))]
+
+
+def test_the_project_root_itself_needs_no_start_location(git_repo, recorded):
+    entry.main([str(git_repo)])
+    assert recorded == [(git_repo.resolve(), None)]
+
+
+def test_no_argument_means_the_current_directory(git_repo, recorded, monkeypatch):
+    monkeypatch.chdir(git_repo / "src")
+    entry.main([])
+    assert recorded == [(git_repo.resolve(), Location("src", None))]
+
+
+def test_a_project_without_git_uses_its_build_marker(tmp_path, recorded):
+    (tmp_path / "service" / "src").mkdir(parents=True)
+    (tmp_path / "service" / "pom.xml").write_text("<project/>")
+    entry.main([str(tmp_path / "service" / "src")])
+    assert recorded == [((tmp_path / "service").resolve(), Location("src", None))]
+
+
+def test_a_missing_path_is_an_error_and_starts_nothing(tmp_path, recorded, capsys):
+    assert entry.main([str(tmp_path / "nope")]) == 2
+    assert "no such file or directory" in capsys.readouterr().err and recorded == []
 
 
 def test_version_flag_prints_the_package_version(capsys):

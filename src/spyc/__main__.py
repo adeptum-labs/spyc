@@ -21,18 +21,39 @@
 import argparse
 import importlib.metadata
 import sys
+from pathlib import Path
+
+from spyc.app import SpycApp
+from spyc.location import Location, parse_location
+from spyc.project import find_root
+from spyc.state import configure_logging
 
 DESCRIPTION = "Terminal viewer for browsing code bases: syntax colors, git history and coverage."
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="spyc", description=DESCRIPTION)
+    parser.add_argument("path", nargs="?", default=".", metavar="PATH[:LINE]",
+                        help="file or directory to open, the current directory by default")
     parser.add_argument("--version", action="version", version=f"spyc {importlib.metadata.version('spyc')}")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    build_parser().parse_args(argv)
+    arguments = build_parser().parse_args(argv)
+    location = parse_location(arguments.path)
+    target = Path(location.path).expanduser().resolve()
+    if not target.exists():
+        print(f"spyc: {arguments.path}: no such file or directory", file=sys.stderr)
+        return 2
+    root = find_root(target)
+    try:
+        relative = target.relative_to(root).as_posix()
+    except ValueError:
+        root = target if target.is_dir() else target.parent
+        relative = target.relative_to(root).as_posix()
+    configure_logging()
+    SpycApp(root, None if relative == "." else Location(relative, location.line)).run()
     return 0
 
 
