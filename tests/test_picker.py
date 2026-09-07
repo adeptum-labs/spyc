@@ -113,11 +113,12 @@ async def test_enter_with_nothing_to_choose_does_nothing():
     assert app.result is None
 
 
-async def test_only_the_item_you_stop_on_is_previewed():
+async def test_only_the_item_you_stop_on_is_previewed(monkeypatch):
+    monkeypatch.setattr("spyc.screens.picker.PREVIEW_DELAY", 0.5)
     source = FakeSource()
     async with PickerApp(source).run_test(size=(120, 40)) as pilot:
         await pilot.press("down", "down")
-        await pilot.pause(0.4)
+        await pilot.pause(1.0)
     assert source.previewed[-1] == "alps" and "beta" not in source.previewed
 
 
