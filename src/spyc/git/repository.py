@@ -22,6 +22,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from spyc.git.changes import LineChanges, parse_hunks
 from spyc.git.status import parse_status
 
 TIMEOUT_SECONDS = 30.0
@@ -49,3 +50,12 @@ class Git:
     def status(self) -> dict[str, str] | None:
         output = self.run("status", "--porcelain=v2", "-z", "--untracked-files=all")
         return None if output is None else parse_status(output)
+
+    # Before the first commit there is no HEAD to compare with, and the staged
+    # lines are compared with nothing instead.
+    def line_changes(self, path: str) -> LineChanges | None:
+        options = ("diff", "-U0", "--no-ext-diff")
+        output = self.run(*options, "HEAD", "--", path)
+        if output is None:
+            output = self.run(*options, "--cached", "--", path)
+        return None if output is None else parse_hunks(output)
