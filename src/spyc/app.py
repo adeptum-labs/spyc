@@ -22,6 +22,7 @@ import subprocess
 from pathlib import Path
 
 from textual import work
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -34,6 +35,7 @@ from spyc.editor import editor_command
 from spyc.file_index import MAX_INDEXED_FILES, FileIndex, build_index
 from spyc.file_picker import FilePickerSource
 from spyc.fuzzy import PathMatcher
+from spyc.git.repository import Git
 from spyc.history import JumpHistory, Place
 from spyc.location import Location
 from spyc.overview import Overview, build_overview
@@ -51,6 +53,7 @@ from spyc.widgets.overview_pane import OverviewPane
 from spyc.widgets.status_bar import StatusBar
 
 RELOAD_INTERVAL = 2.0
+GIT_INTERVAL = 10.0
 MARKDOWN_LIMIT = 50_000
 
 
@@ -85,6 +88,9 @@ class SpycApp(App):
         self.store = store or StateStore()
         self.history = JumpHistory()
         self.overview: Overview | None = None
+        self.git = Git(project_root)
+        self.git_enabled = True
+        self._git_seen = False
         self._start_location = start
         self._max_files = max_files
         self._matcher: PathMatcher | None = None
@@ -136,7 +142,9 @@ class SpycApp(App):
         self._rendered.display = False
         self._tree.display = bool(self.store.get("sidebar", True))
         self.set_interval(RELOAD_INTERVAL, self._check_for_changes)
+        self.set_interval(GIT_INTERVAL, self._refresh_git)
         self._reload_index()
+        self._refresh_git()
         start = self._start_location
         if start is not None and (self.project_root / start.path).is_file():
             self.open_file(start.path, start.line)
@@ -171,6 +179,27 @@ class SpycApp(App):
         focus = code.display_path if code.document is not None else (start.path if start else "")
         if focus:
             self._tree.reveal(focus)
+
+    # Git is asked again on a timer, when the window regains focus, after the
+    # editor and on request, and never once it is clear that this is not a
+    # repository.
+    def _refresh_git(self) -> None:
+        if self.git_enabled:
+            self._load_git_status()
+
+    @work(thread=True, exclusive=True, group="git-status", exit_on_error=False)
+    def _load_git_status(self) -> None:
+        self.call_from_thread(self._git_status_ready, self.git.status())
+
+    def _git_status_ready(self, status: dict[str, str] | None) -> None:
+        if status is None:
+            self.git_enabled = self._git_seen
+            return
+        self._git_seen = True
+        self._tree.set_status(status)
+
+    def on_app_focus(self, event: events.AppFocus) -> None:
+        self._refresh_git()
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.state is WorkerState.ERROR and event.worker.group == "index":
@@ -280,6 +309,7 @@ class SpycApp(App):
         if error is not None:
             self.notify(f"Could not start the editor: {error}", severity="error", markup=False)
         await self._check_for_changes()
+        self._refresh_git()
 
     # A stat every couple of seconds needs no dependency and works on network mounts, unlike inotify.
     async def _check_for_changes(self) -> None:
@@ -309,6 +339,7 @@ class SpycApp(App):
 
     def action_refresh_project(self) -> None:
         self._reload_index()
+        self._refresh_git()
 
     async def action_toggle_markdown(self) -> None:
         rendered, code = self._rendered, self._code

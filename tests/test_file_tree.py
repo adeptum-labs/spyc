@@ -124,3 +124,21 @@ async def test_loading_again_replaces_the_tree():
         tree = pilot.app.query_one(FileTree)
         tree.load(TreeModel(["a.txt"]))
         assert labels(tree.root.children) == ["a.txt"]
+
+
+async def test_status_marks_files_and_the_directories_above_them():
+    async with TreeApp().run_test() as pilot:
+        tree = pilot.app.query_one(FileTree)
+        tree.set_status({"docs/guide.md": "M", "src/test/T.java": "?", "Zed.txt": "A"})
+        assert labels(tree.root.children) == ["docs M", "src ?", "README.md", "Zed.txt A"]
+
+
+async def test_status_reaches_nodes_opened_later_and_can_be_cleared():
+    async with TreeApp().run_test() as pilot:
+        tree = pilot.app.query_one(FileTree)
+        tree.set_status({"src/main/java/A.java": "D"})
+        await pilot.press("j", "right")
+        assert labels(tree.cursor_node.children) == ["main/java D", "test"]
+        tree.set_status({})
+        assert labels(tree.cursor_node.children) == ["main/java", "test"]
+        assert labels(tree.root.children)[1] == "src"

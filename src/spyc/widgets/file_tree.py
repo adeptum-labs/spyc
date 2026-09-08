@@ -24,8 +24,11 @@ from textual.message import Message
 from textual.widgets import Tree
 from textual.widgets.tree import TreeNode
 
+from spyc.git.status import rollup
 from spyc.printable import printable
 from spyc.tree_model import Entry, TreeModel
+
+STATUS_STYLES = {"M": "yellow", "A": "green", "D": "red", "R": "cyan", "?": "bright_black", "U": "bold red"}
 
 
 class FileTree(Tree[Entry]):
@@ -47,6 +50,25 @@ class FileTree(Tree[Entry]):
         self.guide_depth = 2
         self._model = TreeModel([])
         self._populated: set[int] = set()
+        self._file_status: dict[str, str] = {}
+        self._directory_status: dict[str, str] = {}
+
+    def set_status(self, files: dict[str, str]) -> None:
+        self._file_status, self._directory_status = files, rollup(files)
+        self._relabel(self.root)
+
+    def _relabel(self, node: TreeNode[Entry]) -> None:
+        for child in node.children:
+            if child.data is not None:
+                child.set_label(self._label(child.data))
+            self._relabel(child)
+
+    def _label(self, entry: Entry) -> Text:
+        label = Text(printable(entry.name), style="bold" if entry.is_dir else "")
+        code = (self._directory_status if entry.is_dir else self._file_status).get(entry.path)
+        if code:
+            label.append(f" {code}", style=STATUS_STYLES[code])
+        return label
 
     def load(self, model: TreeModel) -> None:
         self._model = model
@@ -64,11 +86,10 @@ class FileTree(Tree[Entry]):
             return
         self._populated.add(node.id)
         for entry in self._model.children(node.data.path if node.data else ""):
-            label = Text(printable(entry.name), style="bold" if entry.is_dir else "")
             if entry.is_dir:
-                node.add(label, data=entry, allow_expand=True)
+                node.add(self._label(entry), data=entry, allow_expand=True)
             else:
-                node.add_leaf(label, data=entry)
+                node.add_leaf(self._label(entry), data=entry)
 
     def on_tree_node_expanded(self, event: Tree.NodeExpanded[Entry]) -> None:
         self._populate(event.node)
