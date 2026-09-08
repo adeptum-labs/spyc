@@ -31,7 +31,8 @@ from textual.strip import Strip
 
 from spyc.cells import cell_of_char, char_at_cell, widest_cells
 from spyc.document import Document
-from spyc.gutters import Gutter, LineNumberGutter
+from spyc.git.changes import LineChanges
+from spyc.gutters import ChangeGutter, Gutter, LineNumberGutter
 from spyc.line_text import build_line
 from spyc.matches import find_matches
 from spyc.syntax.factory import make_highlighter
@@ -79,6 +80,8 @@ class CodeView(ScrollView, can_focus=True):
         self._highlighter: Highlighter = PlainHighlighter()
         self._theme = code_theme(dark=True)
         self._gutters: list[Gutter] = []
+        self._changes: LineChanges | None = None
+        self._width_of_text = 1
         self._strips: LRUCache[tuple, Strip] = LRUCache(CACHED_ROWS)
 
     @property
@@ -96,13 +99,29 @@ class CodeView(ScrollView, can_focus=True):
     def show(self, document: Document, display_path: str = "") -> None:
         self.document, self.display_path = document, display_path
         self._highlighter = PlainHighlighter()
-        self._gutters = [LineNumberGutter(len(document.lines))]
-        self.virtual_size = Size(widest_cells(document.lines) + 1 + self.gutter_width, max(1, len(document.lines)))
+        self._changes = None if self._changes is None else LineChanges()
+        self._width_of_text = widest_cells(document.lines) + 1
+        self._rebuild_gutters()
         self.scroll_to(0, 0, animate=False, immediate=True)
         self.clear_search()
         self._move_to(0, 0)
         if document.language is not None and not document.plain:
             self._highlight(document)
+
+    # None hides the column of change marks; any value, even an empty one,
+    # shows it, so that it does not appear and push the text aside after the
+    # marks of each new file have been read.
+    def set_changes(self, changes: LineChanges | None) -> None:
+        self._changes = changes
+        self._rebuild_gutters()
+        self._repaint()
+
+    def _rebuild_gutters(self) -> None:
+        lines = self._lines()
+        self._gutters = [LineNumberGutter(len(lines))]
+        if self._changes is not None:
+            self._gutters.append(ChangeGutter(self._changes))
+        self.virtual_size = Size(self._width_of_text + self.gutter_width, max(1, len(lines)))
 
     def replace(self, document: Document) -> None:
         row, column, offset = self.cursor_row, self.cursor_column, self.scroll_offset
