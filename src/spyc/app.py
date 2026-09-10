@@ -35,6 +35,7 @@ from spyc.editor import editor_command
 from spyc.file_index import MAX_INDEXED_FILES, FileIndex, build_index
 from spyc.file_picker import FilePickerSource
 from spyc.fuzzy import PathMatcher
+from spyc.git.changes import LineChanges
 from spyc.git.repository import Git
 from spyc.history import JumpHistory, Place
 from spyc.location import Location
@@ -91,6 +92,7 @@ class SpycApp(App):
         self.git = Git(project_root)
         self.git_enabled = True
         self._git_seen = False
+        self._git_files: dict[str, str] = {}
         self._start_location = start
         self._max_files = max_files
         self._matcher: PathMatcher | None = None
@@ -196,7 +198,30 @@ class SpycApp(App):
             self.git_enabled = self._git_seen
             return
         self._git_seen = True
+        self._git_files = status
         self._tree.set_status(status)
+        self._refresh_changes()
+
+    # The column of marks is reserved the moment a file is shown, and filled
+    # in when git has answered.
+    def _refresh_changes(self) -> None:
+        code = self._code
+        if not (self.git_enabled and self._git_seen) or code.document is None:
+            return
+        if code.changes is None:
+            code.set_changes(LineChanges())
+        path = code.display_path
+        self._load_changes(path, len(code.document.lines), self._git_files.get(path) == "?")
+
+    @work(thread=True, exclusive=True, group="git-changes", exit_on_error=False)
+    def _load_changes(self, path: str, line_count: int, untracked: bool) -> None:
+        changes = LineChanges.everything(line_count) if untracked else self.git.line_changes(path)
+        self.call_from_thread(self._changes_ready, path, changes)
+
+    def _changes_ready(self, path: str, changes: LineChanges | None) -> None:
+        code = self._code
+        if changes is not None and code.display_path == path:
+            code.set_changes(changes)
 
     def on_app_focus(self, event: events.AppFocus) -> None:
         self._refresh_git()
@@ -226,6 +251,7 @@ class SpycApp(App):
         self.store.add_recent_file(self.project_root, path)
         self._tree.reveal(path)
         code.focus()
+        self._refresh_changes()
         return True
 
     def _current_place(self) -> Place | None:
@@ -330,6 +356,7 @@ class SpycApp(App):
         except OSError:
             return
         code.replace(document)
+        self._refresh_git()
         if self._rendered.display:
             if len(document.text) > MARKDOWN_LIMIT:
                 self._rendered.display, code.display = False, True

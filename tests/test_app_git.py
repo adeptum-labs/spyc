@@ -18,11 +18,16 @@
 # Contact: info@adeptum.se
 
 
+import os
+import time
+
 from textual import events
 
 import spyc.app
 from spyc.app import SpycApp
+from repos import write_files
 from spyc.state import StateStore
+from spyc.widgets.code_view import CodeView
 from spyc.widgets.file_tree import FileTree
 
 SIZE = (140, 40)
@@ -100,3 +105,49 @@ async def test_the_marks_are_refreshed_on_a_timer(git_repo, tmp_path, monkeypatc
         await pilot.pause(1.0)
         await ready(pilot)
         assert "README.md M" in top_level(app)
+
+
+async def test_changed_lines_are_marked_in_the_open_file(git_repo, tmp_path):
+    (git_repo / "README.md").write_text("# Project\n\nA test project.\nMore\n")
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("README.md")
+        await ready(pilot)
+        code = app.query_one(CodeView)
+        assert "▎" in code.render_line(3).text and "▎" not in code.render_line(0).text
+
+
+async def test_a_new_untracked_file_is_marked_as_added_all_through(git_repo, tmp_path):
+    write_files(git_repo, {"new.py": "a = 1\nb = 2\n"})
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("new.py")
+        await ready(pilot)
+        code = app.query_one(CodeView)
+        assert "▎" in code.render_line(0).text and "▎" in code.render_line(1).text
+
+
+async def test_a_project_without_git_has_no_change_column(project, tmp_path):
+    app = make_app(project, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("src/app.py")
+        await ready(pilot)
+        assert app.query_one(CodeView).render_line(0).text.startswith("   1 def main")
+
+
+async def test_the_marks_follow_a_reload_of_the_file(git_repo, tmp_path):
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("README.md")
+        await ready(pilot)
+        code = app.query_one(CodeView)
+        assert "▎" not in code.render_line(2).text
+        (git_repo / "README.md").write_text("# Project\n\nchanged\n")
+        os.utime(git_repo / "README.md", (time.time() + 10, time.time() + 10))
+        await app._check_for_changes()
+        await ready(pilot)
+        assert "▎" in code.render_line(2).text

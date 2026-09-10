@@ -85,6 +85,10 @@ class CodeView(ScrollView, can_focus=True):
         self._strips: LRUCache[tuple, Strip] = LRUCache(CACHED_ROWS)
 
     @property
+    def changes(self) -> LineChanges | None:
+        return self._changes
+
+    @property
     def gutter_width(self) -> int:
         return sum(gutter.width for gutter in self._gutters)
 
