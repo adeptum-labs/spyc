@@ -23,6 +23,7 @@ import subprocess
 from pathlib import Path
 
 from spyc.git.changes import LineChanges, parse_hunks
+from spyc.git.log import LOG_FORMAT, Commit, parse_log
 from spyc.git.status import parse_status
 
 TIMEOUT_SECONDS = 30.0
@@ -50,6 +51,16 @@ class Git:
     def status(self) -> dict[str, str] | None:
         output = self.run("status", "--porcelain=v2", "-z", "--untracked-files=all")
         return None if output is None else parse_status(output)
+
+    def log(self, limit: int = 200, skip: int = 0, path: str | None = None, grep: str | None = None
+            ) -> list[Commit] | None:
+        arguments = ["log", "-z", f"--format={LOG_FORMAT}", f"--max-count={limit}", f"--skip={skip}"]
+        if grep:
+            arguments += ["-i", "--fixed-strings", f"--grep={grep}"]
+        if path:
+            arguments += ["--follow", "--", path]
+        output = self.run(*arguments)
+        return None if output is None else parse_log(output)
 
     # Before the first commit there is no HEAD to compare with, and the staged
     # lines are compared with nothing instead.
