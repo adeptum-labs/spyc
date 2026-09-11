@@ -20,13 +20,23 @@
 
 import os
 import subprocess
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from spyc.git.changes import LineChanges, parse_hunks
+from spyc.git.diff import Diff, diff_of_new_file, parse_diff
 from spyc.git.log import LOG_FORMAT, Commit, parse_log
 from spyc.git.status import parse_status
 
 TIMEOUT_SECONDS = 30.0
+UNTRACKED_FILE_LIMIT = 1024 * 1024
+
+
+@dataclass(frozen=True)
+class CommitDetail:
+    message: str
+    diff: Diff
 
 
 # Every method runs the git command line and gives None when git is missing,
@@ -41,7 +51,8 @@ class Git:
         # Optional locks stay off so that polling never fights the user's own
         # git commands for index.lock.
         environment = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
-        command = ["git", "--no-pager", "-C", str(self.root), "-c", "color.ui=never", *arguments]
+        command = ["git", "--no-pager", "-C", str(self.root), "-c", "color.ui=never", "-c", "core.quotepath=false",
+                   *arguments]
         try:
             result = subprocess.run(command, capture_output=True, env=environment, timeout=TIMEOUT_SECONDS)
         except (OSError, subprocess.TimeoutExpired):
@@ -61,6 +72,29 @@ class Git:
             arguments += ["--follow", "--", path]
         output = self.run(*arguments)
         return None if output is None else parse_log(output)
+
+    def commit_detail(self, commit: str) -> CommitDetail | None:
+        message = self.run("show", "-s", "--format=%B", commit)
+        patch = self.run("show", "--format=", "--patch", "-M", "--diff-merges=first-parent", commit)
+        return None if message is None or patch is None else CommitDetail(message.rstrip("\n"), parse_diff(patch))
+
+    # Untracked files are not part of any git diff, so the caller names them
+    # and they are shown as wholly added.
+    def working_diff(self, untracked: Sequence[str]) -> Diff | None:
+        options = ("diff", "--no-ext-diff", "-M")
+        output = self.run(*options, "HEAD")
+        if output is None:
+            output = self.run(*options, "--cached")
+        if output is None:
+            return None
+        diff = parse_diff(output)
+        for path in untracked:
+            try:
+                with (self.root / path).open("rb") as handle:
+                    diff.files.append(diff_of_new_file(path, handle.read(UNTRACKED_FILE_LIMIT)))
+            except OSError:
+                continue
+        return diff
 
     # Before the first commit there is no HEAD to compare with, and the staged
     # lines are compared with nothing instead.
