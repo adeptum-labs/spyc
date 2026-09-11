@@ -29,6 +29,7 @@ from spyc.git.changes import LineChanges, parse_hunks
 from spyc.git.diff import Diff, diff_of_new_file, parse_diff
 from spyc.git.log import LOG_FORMAT, Commit, parse_log
 from spyc.git.status import parse_status
+from spyc.git.summary import GitSummary
 
 TIMEOUT_SECONDS = 30.0
 UNTRACKED_FILE_LIMIT = 1024 * 1024
@@ -73,6 +74,17 @@ class Git:
             arguments += ["--follow", "--", path]
         output = self.run(*arguments)
         return None if output is None else parse_log(output)
+
+    def branch(self) -> str | None:
+        name = self.run("symbolic-ref", "--short", "-q", "HEAD")
+        if name is not None:
+            return name.strip()
+        detached = self.run("rev-parse", "--short", "HEAD")
+        return None if detached is None else f"(detached {detached.strip()})"
+
+    def summary(self, status: dict[str, str]) -> GitSummary:
+        commits = self.log(limit=1)
+        return GitSummary(self.branch(), len(status), commits[0] if commits else None)
 
     def blame(self, path: str) -> list[BlameLine] | None:
         output = self.run("blame", "--porcelain", "--", path)

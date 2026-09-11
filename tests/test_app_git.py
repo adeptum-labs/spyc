@@ -294,3 +294,21 @@ async def test_b_outside_a_repository_says_so(project, tmp_path, monkeypatch):
         await pilot.press("b")
         await pilot.pause()
         assert notes == ["Not a git repository"] and app.query_one(CodeView).blame is None
+
+
+async def test_the_overview_and_the_title_tell_the_branch_and_the_changes(git_repo, tmp_path):
+    (git_repo / "README.md").write_text("changed\n")
+    branch = Git(git_repo).branch()
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        line = app.query_one("#git").render().plain
+        assert line.startswith(f"{branch} · 1 changed · last: ") and "Initial commit" in line
+        assert app.sub_title.endswith(f"⎇ {branch}")
+
+
+async def test_a_project_without_git_has_no_git_line(project, tmp_path):
+    app = make_app(project, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        assert not app.query_one("#git").display and "⎇" not in app.sub_title

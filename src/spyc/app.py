@@ -38,6 +38,7 @@ from spyc.fuzzy import PathMatcher
 from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
 from spyc.git.repository import Git
+from spyc.git.summary import GitSummary
 from spyc.history import JumpHistory, Place
 from spyc.location import Location
 from spyc.overview import Overview, build_overview
@@ -199,15 +200,18 @@ class SpycApp(App):
 
     @work(thread=True, exclusive=True, group="git-status", exit_on_error=False)
     def _load_git_status(self) -> None:
-        self.call_from_thread(self._git_status_ready, self.git.status())
+        status = self.git.status()
+        self.call_from_thread(self._git_status_ready, status, None if status is None else self.git.summary(status))
 
-    def _git_status_ready(self, status: dict[str, str] | None) -> None:
+    def _git_status_ready(self, status: dict[str, str] | None, summary: GitSummary | None) -> None:
         if status is None:
             self.git_enabled = self._git_seen
             return
         self._git_seen = True
         self._git_files = status
         self._tree.set_status(status)
+        self._overview_pane.show_git(summary)
+        self.sub_title = printable(f"{self.project_root}  ⎇ {summary.branch}") if summary and summary.branch else self.sub_title
         self._refresh_changes()
 
     # The column of marks is reserved the moment a file is shown, and filled
