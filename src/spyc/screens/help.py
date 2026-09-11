@@ -36,6 +36,7 @@ HELP_ROWS: list[tuple[str, str | None, str]] = [
     ("l", "show_log", "Commit log; the diff of each commit beside it, Enter on a line opens it"),
     ("L", "show_file_log", "History of the open file"),
     ("g", "show_changes", "All uncommitted changes as one diff"),
+    ("b", "toggle_blame", "Show who last changed each line; Enter on a line opens that commit"),
     ("e", "edit", "Edit in $VISUAL or $EDITOR at the cursor line"),
     ("p", "copy_location", "Copy path:line to the clipboard"),
     ("i", "overview", "Project overview"),

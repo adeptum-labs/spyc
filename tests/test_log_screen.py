@@ -30,12 +30,12 @@ from spyc.widgets.diff_view import DiffView
 
 
 class LogApp(App):
-    def __init__(self, repo, path=None):
+    def __init__(self, repo, path=None, focus=None):
         super().__init__()
-        self.git, self.path, self.result = Git(repo), path, "unset"
+        self.git, self.path, self.focus, self.result = Git(repo), path, focus, "unset"
 
     async def on_mount(self):
-        await self.push_screen(LogScreen(self.git, self.path), self.done)
+        await self.push_screen(LogScreen(self.git, self.path, self.focus), self.done)
 
     def done(self, result):
         self.result = result
@@ -141,3 +141,16 @@ async def test_escape_and_q_close_the_log(git_repo):
             await pilot.press(key)
             await pilot.pause()
         assert app.result is None
+
+
+async def test_a_named_commit_is_highlighted_even_on_a_later_page(git_repo, monkeypatch):
+    monkeypatch.setattr(spyc.screens.log, "PAGE_SIZE", 2)
+    monkeypatch.setattr(spyc.screens.log, "LOAD_AHEAD", 0)
+    history(git_repo)
+    commit(git_repo, "b.txt", "b", "Add b")
+    oldest = Git(git_repo).log()[-1].hash
+    async with LogApp(git_repo, focus=oldest).run_test(size=(140, 40)) as pilot:
+        for _ in range(4):
+            await settle(pilot)
+        assert pilot.app.screen.query_one(OptionList).highlighted == 3
+        assert any(row.kind == "file" and row.text.startswith("added README.md") for row in detail(pilot))

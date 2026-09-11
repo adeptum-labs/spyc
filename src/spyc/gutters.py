@@ -23,8 +23,11 @@ from typing import Protocol
 from rich.style import Style
 from rich.text import Text
 
+from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
+from spyc.printable import printable
 from spyc.syntax.theme import CodeTheme
+from spyc.timeago import age
 
 MIN_DIGITS = 3
 
@@ -67,3 +70,28 @@ class ChangeGutter:
         else:
             mark = NO_MARK
         return Text(mark[0], style=mark[1])
+
+
+WEEK = 7 * 86400
+MONTH = 30 * 86400
+YEAR = 365 * 86400
+BLAME_WIDTH = 22
+
+
+class BlameGutter:
+    width = BLAME_WIDTH
+
+    def __init__(self, lines: list[BlameLine], now: float) -> None:
+        self._lines, self._now = lines, now
+
+    def render(self, row: int, is_cursor_row: bool, theme: CodeTheme) -> Text:
+        blank = Text(" " * BLAME_WIDTH)
+        if row >= len(self._lines) or (row > 0 and self._lines[row - 1].hash == self._lines[row].hash):
+            return blank
+        line = self._lines[row]
+        if line.uncommitted:
+            return Text("(uncommitted)".ljust(BLAME_WIDTH), style=Style(color="yellow", italic=True))
+        seconds = self._now - line.timestamp
+        color = "green" if seconds < WEEK else "cyan" if seconds < MONTH else "yellow" if seconds < YEAR else None
+        style = Style(color=color) if color else Style(dim=True)
+        return Text(f"{line.hash[:7]} {printable(line.author)[:9]:<9} {age(seconds):>3} ", style=style)

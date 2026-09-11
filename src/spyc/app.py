@@ -35,6 +35,7 @@ from spyc.editor import editor_command
 from spyc.file_index import MAX_INDEXED_FILES, FileIndex, build_index
 from spyc.file_picker import FilePickerSource
 from spyc.fuzzy import PathMatcher
+from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
 from spyc.git.repository import Git
 from spyc.history import JumpHistory, Place
@@ -76,6 +77,7 @@ class SpycApp(App):
         Binding("l", "show_log", "Log"),
         Binding("L", "show_file_log", "File log", show=False),
         Binding("g", "show_changes", "Changes"),
+        Binding("b", "toggle_blame", "Blame"),
         Binding("e", "edit", "Edit"),
         Binding("p", "copy_location", "Copy path", show=False),
         Binding("i", "overview", "Overview"),
@@ -98,6 +100,7 @@ class SpycApp(App):
         self.git_enabled = True
         self._git_seen = False
         self._git_files: dict[str, str] = {}
+        self._blame_on = False
         self._start_location = start
         self._max_files = max_files
         self._matcher: PathMatcher | None = None
@@ -257,6 +260,7 @@ class SpycApp(App):
         self._tree.reveal(path)
         code.focus()
         self._refresh_changes()
+        self._refresh_blame()
         return True
 
     def _current_place(self) -> Place | None:
@@ -338,6 +342,41 @@ class SpycApp(App):
         if self._in_git():
             self.push_screen(ChangesScreen(self.git, self._untracked_files), self._location_chosen)
 
+    def action_toggle_blame(self) -> None:
+        code = self._viewing()
+        if code is None or not self._in_git():
+            return
+        self._blame_on = not self._blame_on
+        if self._blame_on:
+            self._refresh_blame()
+        else:
+            code.set_blame(None)
+
+    # Like the change marks, the column is reserved at once and filled when
+    # git has answered; a file git does not know keeps a blank column.
+    def _refresh_blame(self) -> None:
+        code = self._code
+        if not self._blame_on or code.document is None:
+            return
+        if code.blame is None:
+            code.set_blame([])
+        self._load_blame(code.display_path)
+
+    @work(thread=True, exclusive=True, group="git-blame", exit_on_error=False)
+    def _load_blame(self, path: str) -> None:
+        self.call_from_thread(self._blame_ready, path, self.git.blame(path))
+
+    def _blame_ready(self, path: str, lines: list[BlameLine] | None) -> None:
+        code = self._code
+        if self._blame_on and lines is not None and code.display_path == path:
+            code.set_blame(lines)
+
+    def on_code_view_open_commit(self, message: CodeView.OpenCommit) -> None:
+        if message.hash is None:
+            self.action_show_changes()
+        else:
+            self.push_screen(LogScreen(self.git, focus=message.hash), self._location_chosen)
+
     def _untracked_files(self) -> list[str]:
         return [path for path, code in self._git_files.items() if code == "?"]
 
@@ -391,6 +430,7 @@ class SpycApp(App):
             return
         code.replace(document)
         self._refresh_git()
+        self._refresh_blame()
         if self._rendered.display:
             if len(document.text) > MARKDOWN_LIMIT:
                 self._rendered.display, code.display = False, True

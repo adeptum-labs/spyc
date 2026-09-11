@@ -22,9 +22,11 @@ import os
 import time
 
 from textual import events
+from textual.widgets import OptionList
 
 import spyc.app
 from spyc.app import SpycApp
+from spyc.git.repository import Git
 from repos import git, write_files
 from spyc.screens.changes import ChangesScreen
 from spyc.screens.log import LogScreen
@@ -219,3 +221,76 @@ async def test_the_git_keys_explain_themselves_outside_a_repository(project, tmp
         await pilot.pause()
         assert notes == ["Not a git repository", "Not a git repository"]
         assert len(app.screen_stack) == 1
+
+
+async def test_b_shows_and_hides_who_changed_each_line(git_repo, tmp_path):
+    first = Git(git_repo).log()[0].short
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("README.md")
+        await ready(pilot)
+        code = app.query_one(CodeView)
+        await pilot.press("b")
+        await ready(pilot)
+        assert code.render_line(0).text.startswith(first)
+        await pilot.press("b")
+        await pilot.pause()
+        assert code.blame is None and code.render_line(0).text.startswith("   1   # Project")
+
+
+async def test_the_blame_column_follows_the_files_that_are_opened(git_repo, tmp_path):
+    first = Git(git_repo).log()[0].short
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("README.md")
+        await ready(pilot)
+        await pilot.press("b")
+        await ready(pilot)
+        app.open_file("pyproject.toml")
+        await ready(pilot)
+        assert app.query_one(CodeView).render_line(0).text.startswith(first)
+
+
+async def test_enter_on_a_blamed_line_opens_that_commit_in_the_log(git_repo, tmp_path):
+    first = Git(git_repo).log()[0]
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("README.md")
+        await ready(pilot)
+        await pilot.press("b")
+        await ready(pilot)
+        await pilot.press("enter")
+        await pilot.pause(0.8)
+        assert isinstance(app.screen, LogScreen)
+        assert app.screen.query_one(OptionList).highlighted == 0
+        assert first.short in str(app.screen.query_one(OptionList).get_option_at_index(0).prompt)
+
+
+async def test_enter_on_an_uncommitted_line_opens_the_changes(git_repo, tmp_path):
+    (git_repo / "README.md").write_text("# Project\n\nA test project.\nMore\n")
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("README.md")
+        await ready(pilot)
+        await pilot.press("b")
+        await ready(pilot)
+        await pilot.press("down", "down", "down", "enter")
+        await pilot.pause(0.8)
+        assert isinstance(app.screen, ChangesScreen)
+
+
+async def test_b_outside_a_repository_says_so(project, tmp_path, monkeypatch):
+    notes = []
+    monkeypatch.setattr(SpycApp, "notify", lambda self, message, **options: notes.append(message))
+    app = make_app(project, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("src/app.py")
+        await pilot.pause()
+        await pilot.press("b")
+        await pilot.pause()
+        assert notes == ["Not a git repository"] and app.query_one(CodeView).blame is None

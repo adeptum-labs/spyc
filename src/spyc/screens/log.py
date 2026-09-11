@@ -69,9 +69,9 @@ class LogScreen(Screen[Location | None]):
         Binding("slash", "filter", "Filter"),
     ]
 
-    def __init__(self, git: Git, path: str | None = None) -> None:
+    def __init__(self, git: Git, path: str | None = None, focus: str | None = None) -> None:
         super().__init__()
-        self._git, self._path = git, path
+        self._git, self._path, self._wanted = git, path, focus
         self._commits: list[Commit] = []
         self._grep = ""
         self._generation = 0
@@ -123,8 +123,22 @@ class LogScreen(Screen[Location | None]):
         options = self.query_one(OptionList)
         now = time.time()
         options.add_options([Option(_label(commit, now)) for commit in commits])
-        if first and commits:
+        if self._wanted is not None:
+            self._look_for_wanted_commit()
+        elif first and commits:
             options.highlighted = 0
+
+    # A commit that was asked for may be on a later page, so pages are read
+    # until it turns up or there are no more.
+    def _look_for_wanted_commit(self) -> None:
+        options = self.query_one(OptionList)
+        found = next((index for index, commit in enumerate(self._commits) if commit.hash == self._wanted), None)
+        if found is not None:
+            options.highlighted, self._wanted = found, None
+        elif self._exhausted:
+            options.highlighted, self._wanted = 0 if self._commits else None, None
+        else:
+            self._load_page()
 
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
         index = event.option_index
@@ -172,7 +186,7 @@ class LogScreen(Screen[Location | None]):
 
     def _filtered(self, value: str | None) -> None:
         if value is not None:
-            self._grep = value.strip()
+            self._grep, self._wanted = value.strip(), None
             self._restart()
 
     def action_close(self) -> None:

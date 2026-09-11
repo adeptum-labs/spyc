@@ -19,6 +19,7 @@
 
 
 import logging
+import time
 
 from rich.text import Text
 from textual import events, work
@@ -31,8 +32,9 @@ from textual.strip import Strip
 
 from spyc.cells import cell_of_char, char_at_cell, widest_cells
 from spyc.document import Document
+from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
-from spyc.gutters import ChangeGutter, Gutter, LineNumberGutter
+from spyc.gutters import BlameGutter, ChangeGutter, Gutter, LineNumberGutter
 from spyc.line_text import build_line, segments_of
 from spyc.matches import find_matches
 from spyc.syntax.factory import make_highlighter
@@ -59,6 +61,7 @@ class CodeView(ScrollView, can_focus=True):
         Binding("ctrl+end", "file_edge(1)", show=False),
         Binding("n", "match(1)", show=False),
         Binding("N", "match(-1)", show=False),
+        Binding("enter", "open_commit", show=False),
     ]
     SCROLL_MARGIN = 3
 
@@ -66,6 +69,11 @@ class CodeView(ScrollView, can_focus=True):
         def __init__(self, row: int, column: int) -> None:
             super().__init__()
             self.row, self.column = row, column
+
+    class OpenCommit(Message):
+        def __init__(self, hash: str | None) -> None:
+            super().__init__()
+            self.hash = hash
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -81,6 +89,8 @@ class CodeView(ScrollView, can_focus=True):
         self._theme = code_theme(dark=True)
         self._gutters: list[Gutter] = []
         self._changes: LineChanges | None = None
+        self._blame: list[BlameLine] | None = None
+        self._blame_time = 0.0
         self._width_of_text = 1
         self._strips: LRUCache[tuple, Strip] = LRUCache(CACHED_ROWS)
 
@@ -104,6 +114,7 @@ class CodeView(ScrollView, can_focus=True):
         self.document, self.display_path = document, display_path
         self._highlighter = PlainHighlighter()
         self._changes = None if self._changes is None else LineChanges()
+        self._blame = None if self._blame is None else []
         self._width_of_text = widest_cells(document.lines) + 1
         self._rebuild_gutters()
         self.scroll_to(0, 0, animate=False, immediate=True)
@@ -122,10 +133,27 @@ class CodeView(ScrollView, can_focus=True):
 
     def _rebuild_gutters(self) -> None:
         lines = self._lines()
-        self._gutters = [LineNumberGutter(len(lines))]
+        self._gutters = [] if self._blame is None else [BlameGutter(self._blame, self._blame_time)]
+        self._gutters.append(LineNumberGutter(len(lines)))
         if self._changes is not None:
             self._gutters.append(ChangeGutter(self._changes))
         self.virtual_size = Size(self._width_of_text + self.gutter_width, max(1, len(lines)))
+
+    # The commit of each line, shown left of the line numbers. Like the change
+    # marks, the column stays when another file is shown.
+    def set_blame(self, blame: list[BlameLine] | None, now: float | None = None) -> None:
+        self._blame, self._blame_time = blame, time.time() if now is None else now
+        self._rebuild_gutters()
+        self._repaint()
+
+    @property
+    def blame(self) -> list[BlameLine] | None:
+        return self._blame
+
+    def action_open_commit(self) -> None:
+        if self._blame is not None and self.cursor_row < len(self._blame):
+            line = self._blame[self.cursor_row]
+            self.post_message(self.OpenCommit(None if line.uncommitted else line.hash))
 
     def replace(self, document: Document) -> None:
         row, column, offset = self.cursor_row, self.cursor_column, self.scroll_offset
