@@ -1,12 +1,12 @@
 # spyc
 
 A terminal viewer for browsing code bases. It finds the project you point it at, shows an overview of it, lists the
-files as a tree, colors the code, and is meant to be the tool you open a code base with.
+files as a tree, colors the code, shows the history from git, and is meant to be the tool you open a code base with.
 
 ## Requirements
 
 - Python 3.11 or later
-- `git` on the path (used to list the files of a project)
+- `git` on the path (lists the files of a project and gives the history, changes and blame)
 
 ## Usage
 
@@ -29,6 +29,10 @@ the build systems and the key files, such as the README, the build files, the CI
 | `/` | Find in the file; `n` and `N` step through the matches |
 | `:` | Go to a line |
 | `[` `]` | Back and forward through the files you have visited |
+| `l` | Commit log; the diff of each commit beside it, `/` filters by message, `Enter` on a diff line opens it |
+| `L` | History of the open file, following renames |
+| `g` | All uncommitted changes, staged or not, and new files, as one diff |
+| `b` | Show who last changed each line; `Enter` on a line opens that commit |
 | `e` | Edit in `$VISUAL` or `$EDITOR` at the cursor line |
 | `p` | Copy `path:line` to the clipboard |
 | `i` | Project overview |
@@ -46,7 +50,9 @@ the build systems and the key files, such as the README, the build files, the CI
 | `Enter` | Open the file in the tree; `←` and `→` close and open directories |
 | `ctrl+p` | Command palette, where the color theme can be changed |
 
-The mouse works too: click to place the cursor, scroll to move.
+In a git repository the tree marks changed files and their directories, the code view marks added, changed and
+deleted lines in the margin, and the overview and the title tell the branch, the number of changes and the last
+commit. The mouse works too: click to place the cursor, scroll to move.
 
 ## Colors
 

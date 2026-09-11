@@ -61,7 +61,8 @@ def _label(commit: Commit, now: float) -> Text:
 class LogScreen(Screen[Location | None]):
     DEFAULT_CSS = """
     LogScreen Horizontal { height: 1fr; }
-    LogScreen OptionList { width: 50%; border: none; border-right: solid $primary; }
+    LogScreen OptionList { width: 50%; border: none; border-right: solid $primary; text-wrap: nowrap;
+                           text-overflow: ellipsis; }
     LogScreen DiffView { width: 50%; }
     """
     BINDINGS = [

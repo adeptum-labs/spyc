@@ -39,7 +39,7 @@ class Picker(ModalScreen[Choice | None]):
     Picker > Vertical { width: 92%; height: 85%; border: round $accent; background: $surface; }
     Picker Input { border: none; border-bottom: solid $primary; }
     Picker Horizontal { height: 1fr; }
-    Picker OptionList { width: 45%; border: none; background: transparent; }
+    Picker OptionList { width: 45%; border: none; background: transparent; text-wrap: nowrap; text-overflow: ellipsis; }
     Picker CodeView { width: 55%; border-left: solid $primary; }
     Picker.-narrow OptionList { width: 100%; }
     Picker.-narrow CodeView { display: none; }
