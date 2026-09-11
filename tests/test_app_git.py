@@ -25,9 +25,12 @@ from textual import events
 
 import spyc.app
 from spyc.app import SpycApp
-from repos import write_files
+from repos import git, write_files
+from spyc.screens.changes import ChangesScreen
+from spyc.screens.log import LogScreen
 from spyc.state import StateStore
 from spyc.widgets.code_view import CodeView
+from spyc.widgets.diff_view import DiffView
 from spyc.widgets.file_tree import FileTree
 
 SIZE = (140, 40)
@@ -151,3 +154,68 @@ async def test_the_marks_follow_a_reload_of_the_file(git_repo, tmp_path):
         await app._check_for_changes()
         await ready(pilot)
         assert "▎" in code.render_line(2).text
+
+
+async def test_l_opens_the_log_and_enter_on_a_diff_line_opens_that_file(git_repo, tmp_path):
+    (git_repo / "README.md").write_text("# Project\n\nA test project.\nMore\n")
+    git(git_repo, "commit", "-qam", "Add a line")
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        await pilot.press("l")
+        await pilot.pause(0.8)
+        assert isinstance(app.screen, LogScreen)
+        await pilot.press("enter")
+        rows = app.screen.query_one(DiffView).rows
+        add = next(index for index, row in enumerate(rows) if row.kind == "add")
+        await pilot.press(*["down"] * add, "enter")
+        await pilot.pause(0.3)
+        code = app.query_one(CodeView)
+        assert code.display_path == "README.md" and code.cursor_row == 3
+
+
+async def test_capital_l_shows_the_history_of_the_open_file(git_repo, tmp_path):
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("README.md")
+        await pilot.pause()
+        await pilot.press("L")
+        await pilot.pause(0.5)
+        assert isinstance(app.screen, LogScreen) and app.screen.sub_title == "Log of README.md"
+
+
+async def test_capital_l_without_an_open_file_says_what_is_needed(git_repo, tmp_path, monkeypatch):
+    notes = []
+    monkeypatch.setattr(SpycApp, "notify", lambda self, message, **options: notes.append(message))
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        await pilot.press("L")
+        await pilot.pause()
+        assert not isinstance(app.screen, LogScreen) and notes == ["Open a file to see its history"]
+
+
+async def test_g_opens_the_changes(git_repo, tmp_path):
+    (git_repo / "README.md").write_text("# Project\n\nchanged\n")
+    write_files(git_repo, {"new.py": "x = 1\n"})
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        await pilot.press("g")
+        await pilot.pause(0.8)
+        assert isinstance(app.screen, ChangesScreen)
+        titles = {row.text.split("  ")[0] for row in app.screen.query_one(DiffView).rows if row.kind == "file"}
+        assert titles == {"modified README.md", "added new.py"}
+
+
+async def test_the_git_keys_explain_themselves_outside_a_repository(project, tmp_path, monkeypatch):
+    notes = []
+    monkeypatch.setattr(SpycApp, "notify", lambda self, message, **options: notes.append(message))
+    app = make_app(project, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        await pilot.press("l", "g")
+        await pilot.pause()
+        assert notes == ["Not a git repository", "Not a git repository"]
+        assert len(app.screen_stack) == 1

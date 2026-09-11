@@ -42,7 +42,9 @@ from spyc.location import Location
 from spyc.overview import Overview, build_overview
 from spyc.picking import Choice
 from spyc.printable import printable
+from spyc.screens.changes import ChangesScreen
 from spyc.screens.help import HelpScreen
+from spyc.screens.log import LogScreen
 from spyc.screens.picker import Picker
 from spyc.screens.prompt import Prompt
 from spyc.state import StateStore
@@ -71,6 +73,9 @@ class SpycApp(App):
         Binding("colon", "goto_line", "Go to line"),
         Binding("left_square_bracket", "history_back", "Back"),
         Binding("right_square_bracket", "history_forward", "Forward"),
+        Binding("l", "show_log", "Log"),
+        Binding("L", "show_file_log", "File log", show=False),
+        Binding("g", "show_changes", "Changes"),
         Binding("e", "edit", "Edit"),
         Binding("p", "copy_location", "Copy path", show=False),
         Binding("i", "overview", "Overview"),
@@ -310,6 +315,35 @@ class SpycApp(App):
         code = self._viewing()
         if value and code is not None:
             code.goto(int(value))
+
+    def _in_git(self) -> bool:
+        if not self.git_enabled:
+            self.notify("Not a git repository")
+        return self.git_enabled
+
+    def action_show_log(self) -> None:
+        if self._in_git():
+            self.push_screen(LogScreen(self.git), self._location_chosen)
+
+    def action_show_file_log(self) -> None:
+        if not self._in_git():
+            return
+        code = self._code
+        if code.document is None:
+            self.notify("Open a file to see its history")
+            return
+        self.push_screen(LogScreen(self.git, code.display_path), self._location_chosen)
+
+    def action_show_changes(self) -> None:
+        if self._in_git():
+            self.push_screen(ChangesScreen(self.git, self._untracked_files), self._location_chosen)
+
+    def _untracked_files(self) -> list[str]:
+        return [path for path, code in self._git_files.items() if code == "?"]
+
+    def _location_chosen(self, location: Location | None) -> None:
+        if location is not None:
+            self.open_file(location.path, location.line)
 
     def action_history_back(self) -> None:
         self._step(self.history.back)
