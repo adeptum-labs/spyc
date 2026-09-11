@@ -24,6 +24,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from spyc.git.blame import BlameLine, parse_blame
 from spyc.git.changes import LineChanges, parse_hunks
 from spyc.git.diff import Diff, diff_of_new_file, parse_diff
 from spyc.git.log import LOG_FORMAT, Commit, parse_log
@@ -72,6 +73,10 @@ class Git:
             arguments += ["--follow", "--", path]
         output = self.run(*arguments)
         return None if output is None else parse_log(output)
+
+    def blame(self, path: str) -> list[BlameLine] | None:
+        output = self.run("blame", "--porcelain", "--", path)
+        return None if output is None else parse_blame(output)
 
     def commit_detail(self, commit: str) -> CommitDetail | None:
         message = self.run("show", "-s", "--format=%B", commit)
