@@ -33,7 +33,7 @@ from spyc.cells import cell_of_char, char_at_cell, widest_cells
 from spyc.document import Document
 from spyc.git.changes import LineChanges
 from spyc.gutters import ChangeGutter, Gutter, LineNumberGutter
-from spyc.line_text import build_line
+from spyc.line_text import build_line, segments_of
 from spyc.matches import find_matches
 from spyc.syntax.factory import make_highlighter
 from spyc.syntax.spans import Highlighter, PlainHighlighter
@@ -259,7 +259,7 @@ class CodeView(ScrollView, can_focus=True):
         if not document.lines:
             return self._notice(document.notice or "", width)
         gutter = Strip([segment for gutter in self._gutters
-                        for segment in gutter.render(row, row == self.cursor_row, self._theme).render(self.app.console)],
+                        for segment in segments_of(gutter.render(row, row == self.cursor_row, self._theme), self.app.console)],
                        self.gutter_width)
         left = self.scroll_offset.x
         code = self._code_strip(row).crop_extend(left, left + width - self.gutter_width, self._theme.base)
@@ -267,7 +267,7 @@ class CodeView(ScrollView, can_focus=True):
 
     def _notice(self, notice: str, width: int) -> Strip:
         text = Text(f" {notice}", style=self._theme.gutter, no_wrap=True, end="")
-        return Strip(text.render(self.app.console), text.cell_len).extend_cell_length(width, self._theme.base)
+        return Strip(segments_of(text, self.app.console), text.cell_len).extend_cell_length(width, self._theme.base)
 
     def _code_strip(self, row: int) -> Strip:
         is_cursor_row = row == self.cursor_row
@@ -277,7 +277,7 @@ class CodeView(ScrollView, can_focus=True):
             text = build_line(self.document.lines[row], self._spans(row), self._theme, is_cursor_row=is_cursor_row,
                               cursor_column=self.cursor_column if is_cursor_row else None,
                               matches=self._matches_by_row.get(row, ()), current_match=self._current_match_on(row))
-            strip = Strip(text.render(self.app.console), text.cell_len)
+            strip = Strip(segments_of(text, self.app.console), text.cell_len)
             self._strips[key] = strip
         return strip
 

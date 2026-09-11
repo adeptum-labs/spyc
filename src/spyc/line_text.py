@@ -20,6 +20,9 @@
 
 from collections.abc import Sequence
 
+from rich.console import Console
+from rich.segment import Segment
+from rich.style import Style
 from rich.text import Text
 
 from spyc.cells import expand_tabs
@@ -46,3 +49,11 @@ def build_line(line: str, spans: Sequence[Span], theme: CodeTheme, *, is_cursor_
     elif cursor_column is not None:
         text.stylize(theme.cursor, starts[cursor_column], starts[cursor_column + 1])
     return text
+
+
+# Text.render leaves out the style of the text itself when the text has no
+# spans, which would drop the theme's colors from every plain line.
+def segments_of(text: Text, console: Console) -> list[Segment]:
+    if text.spans or not text.plain:
+        return list(text.render(console))
+    return [Segment(text.plain, console.get_style(text.style, default=Style.null()))]

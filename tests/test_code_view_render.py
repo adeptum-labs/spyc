@@ -18,6 +18,7 @@
 # Contact: info@adeptum.se
 
 
+from spyc.widgets.code_theme import code_theme
 from views import ViewApp, open_file
 
 
@@ -69,3 +70,10 @@ async def test_scroll_size_covers_every_line_and_the_widest_one(tmp_path):
         view = await open_file(pilot, tmp_path, "a.txt", content.encode())
         assert view.virtual_size.height == 500
         assert view.virtual_size.width == 20 + 1 + view.gutter_width
+
+
+async def test_plain_text_carries_the_style_of_the_theme(tmp_path):
+    async with ViewApp().run_test(size=(80, 24)) as pilot:
+        view = await open_file(pilot, tmp_path, "a.txt", b"a = 1\nb = 2\n")
+        segment = next(segment for segment in view.render_line(1) if "b = 2" in segment.text)
+        assert segment.style is not None and segment.style.bgcolor == code_theme(True).base.bgcolor
