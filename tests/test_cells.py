@@ -23,7 +23,7 @@ import time
 import pytest
 
 import spyc.cells
-from spyc.cells import cell_of_char, char_at_cell, expand_tabs, line_cells, widest_cells
+from spyc.cells import cell_of_char, char_at_cell, expand_tabs, fit_cells, line_cells, widest_cells
 
 
 def test_ascii_columns_are_cells():
@@ -89,3 +89,10 @@ def test_positions_deep_in_a_huge_non_ascii_line_are_found_quickly():
         cell_of_char(line, 1_100_000)
         char_at_cell(line, 1_100_000)
     assert time.perf_counter() - started < 1.0
+
+
+@pytest.mark.parametrize("text, width, expected", [
+    ("abc", 5, "abc  "), ("abcdef", 4, "abcd"), ("张三丰", 8, "张三丰  "), ("张三丰", 5, "张三 "), ("", 3, "   ")])
+def test_text_is_fitted_to_an_exact_number_of_cells(text, width, expected):
+    from rich.cells import cell_len
+    assert fit_cells(text, width) == expected and cell_len(expected) == width

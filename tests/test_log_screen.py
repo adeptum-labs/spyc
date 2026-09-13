@@ -144,14 +144,26 @@ async def test_escape_and_q_close_the_log(git_repo):
         assert app.result is None
 
 
-async def test_a_named_commit_is_highlighted_even_on_a_later_page(git_repo, monkeypatch):
-    monkeypatch.setattr(spyc.screens.log, "PAGE_SIZE", 2)
-    monkeypatch.setattr(spyc.screens.log, "LOAD_AHEAD", 0)
+async def test_the_log_can_start_at_a_named_commit(git_repo):
     history(git_repo)
     commit(git_repo, "b.txt", "b", "Add b")
-    oldest = Git(git_repo).log()[-1].hash
-    async with LogApp(git_repo, focus=oldest).run_test(size=(140, 40)) as pilot:
-        for _ in range(4):
-            await settle(pilot)
-        assert pilot.app.screen.query_one(OptionList).highlighted == 3
-        assert any(row.kind == "file" and row.text.startswith("added README.md") for row in detail(pilot))
+    change = Git(git_repo).log()[1]
+    async with LogApp(git_repo, focus=change.hash).run_test(size=(140, 40)) as pilot:
+        await settle(pilot)
+        listed = rows(pilot)
+        assert len(listed) == 3 and change.short in listed[0] and "Change a" in listed[0]
+        assert pilot.app.screen.sub_title == f"Log from {change.short}"
+        assert any(row.kind == "file" and row.text == "modified a.txt  +1 -1" for row in detail(pilot))
+
+
+async def test_a_commit_that_cannot_be_read_does_not_leave_the_previous_diff_on_screen(git_repo, monkeypatch):
+    history(git_repo)
+    unreadable = Git(git_repo).log()[1].hash
+    real = Git.commit_detail
+    monkeypatch.setattr(Git, "commit_detail", lambda self, commit: None if commit == unreadable else real(self, commit))
+    async with LogApp(git_repo).run_test(size=(140, 40)) as pilot:
+        await settle(pilot)
+        assert any(row.kind == "file" for row in detail(pilot))
+        await pilot.press("down")
+        await settle(pilot)
+        assert [row.text for row in detail(pilot)] == ["Could not read this commit"]

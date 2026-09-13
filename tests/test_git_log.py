@@ -90,3 +90,10 @@ def test_a_commit_whose_fields_cannot_be_split_is_skipped_not_fatal():
     bad = "h\x1fs\x1fAda\x1fLovelace\x1f1\x1f\x1fsubject\0"
     good = "g\x1fg\x1fBob\x1f2\x1f\x1fSubject\0"
     assert [commit.hash for commit in parse_log(bad + good)] == ["g"]
+
+
+def test_the_log_can_start_at_a_given_commit(git_repo):
+    commit(git_repo, "a.txt", "a", "Add a")
+    commit(git_repo, "b.txt", "b", "Add b")
+    middle = Git(git_repo).log()[1].hash
+    assert [entry.subject for entry in Git(git_repo).log(revision=middle)] == ["Add a", "Initial commit"]

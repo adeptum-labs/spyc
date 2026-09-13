@@ -47,9 +47,22 @@ class FilePickerSource:
             return None
 
 
+# The file name comes first so that a narrow list cuts the directory, not the
+# name; the characters that matched are marked wherever they ended up.
 def _label(match: Match) -> Text:
-    label = Text(printable(match.path), no_wrap=True, overflow="ellipsis")
-    label.stylize("dim", 0, match.path.rfind("/") + 1)
+    path = printable(match.path)
+    directory_end = path.rfind("/") + 1
+    name, directory = path[directory_end:], path[:directory_end].rstrip("/")
+    label = Text(name, no_wrap=True, overflow="ellipsis")
+    if directory:
+        label.append("  ")
+        label.append(directory, style="dim")
     for position in match.positions:
-        label.stylize("bold yellow", position, position + 1)
+        if position >= directory_end:
+            marked = position - directory_end
+        elif position < len(directory):
+            marked = len(name) + 2 + position
+        else:
+            continue
+        label.stylize("bold yellow", marked, marked + 1)
     return label

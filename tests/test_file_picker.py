@@ -40,11 +40,27 @@ def test_without_a_suffix_there_is_no_line(tmp_path):
     assert make_source(tmp_path).search("app")[0].line is None
 
 
-def test_the_label_dims_the_directory_and_marks_the_matched_characters(tmp_path):
+def test_the_label_leads_with_the_file_name_and_dims_the_directory_after_it(tmp_path):
     label = make_source(tmp_path).search("app")[0].label
-    assert label.plain == "src/app.py"
+    assert label.plain == "app.py  src"
     assert [(span.start, span.end, str(span.style)) for span in label.spans] == [
-        (0, 4, "dim"), (4, 5, "bold yellow"), (5, 6, "bold yellow"), (6, 7, "bold yellow")]
+        (8, 11, "dim"), (0, 1, "bold yellow"), (1, 2, "bold yellow"), (2, 3, "bold yellow")]
+
+
+def test_a_file_in_the_root_has_no_directory_part(tmp_path):
+    assert make_source(tmp_path).search("readme")[0].label.plain == "README.md"
+
+
+def test_a_deep_path_keeps_its_file_name_where_a_narrow_list_cuts_the_end(tmp_path):
+    deep = "src/main/java/se/adeptum/project/service/impl/CustomerAccountServiceImpl.java"
+    source = FilePickerSource(tmp_path, PathMatcher([deep]), lambda: [])
+    assert source.search("")[0].label.plain.startswith("CustomerAccountServiceImpl.java")
+
+
+def test_characters_matched_in_the_directory_are_marked_there(tmp_path):
+    label = make_source(tmp_path).search("src")[0].label
+    marked = [label.plain[span.start:span.end] for span in label.spans if str(span.style) == "bold yellow"]
+    assert "".join(marked) == "src"
 
 
 def test_an_empty_query_starts_with_the_recent_files(tmp_path):

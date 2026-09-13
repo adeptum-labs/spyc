@@ -53,8 +53,11 @@ class FileTree(Tree[Entry]):
         self._file_status: dict[str, str] = {}
         self._directory_status: dict[str, str] = {}
 
-    def set_status(self, files: dict[str, str]) -> None:
-        self._file_status, self._directory_status = files, rollup(files)
+    # The directories can be worked out by the caller, off the UI thread: for
+    # a tree with hundreds of thousands of changes it takes seconds.
+    def set_status(self, files: dict[str, str], directories: dict[str, str] | None = None) -> None:
+        self._file_status = files
+        self._directory_status = rollup(files) if directories is None else directories
         self._relabel(self.root)
 
     def _relabel(self, node: TreeNode[Entry]) -> None:

@@ -32,14 +32,14 @@ BLAME = [
     BlameLine(2, A, "Ada Lovelace", 1_700_000_000, "First"),
     BlameLine(3, B, "Bob", 1_600_000_000, "Old"),
     BlameLine(4, NOT_COMMITTED, "Not Committed Yet", NOW - 5, "Edit")]
-FIRST_ROW = f"aaaaaaa {'Ada Lovel':<9} {'1d':>3} "
+FIRST_ROW = f"aaaaaaa {'Ada Love':<8} {'1d':>4} "
 
 
 def test_a_commit_is_named_once_for_a_run_of_its_lines():
     gutter = BlameGutter(BLAME, NOW)
     assert gutter.width == 22
     assert [gutter.render(row, False, THEME).plain for row in range(4)] == [
-        FIRST_ROW, " " * 22, f"bbbbbbb {'Bob':<9} {'3y':>3} ", "(uncommitted)".ljust(22)]
+        FIRST_ROW, " " * 22, f"bbbbbbb {'Bob':<8} {'3y':>4} ", "(uncommitted)".ljust(22)]
 
 
 def test_recent_and_old_changes_have_different_colors_and_unknown_rows_are_blank():
@@ -82,3 +82,12 @@ async def test_the_blame_column_stays_when_another_file_is_shown(tmp_path):
         (tmp_path / "b.txt").write_text("two\n")
         view.show(load_document(tmp_path / "b.txt"))
         assert view.render_line(0).text.startswith(" " * 22 + "   1 two")
+
+
+def test_every_row_is_exactly_as_wide_as_the_column_whatever_the_name_and_the_age():
+    from rich.cells import cell_len
+    lines = [BlameLine(1, A, "张三丰", NOW - 340 * 86400, "S"), BlameLine(2, B, "Émile Zola-Longname", NOW - 364 * 86400, "S")]
+    gutter = BlameGutter(lines, NOW)
+    rendered = [gutter.render(row, False, THEME).plain for row in range(2)]
+    assert [cell_len(text) for text in rendered] == [22, 22]
+    assert "11mo" in rendered[0] and "12mo" in rendered[1]

@@ -23,6 +23,7 @@ from typing import Protocol
 from rich.style import Style
 from rich.text import Text
 
+from spyc.cells import fit_cells
 from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
 from spyc.printable import printable
@@ -94,4 +95,4 @@ class BlameGutter:
         seconds = self._now - line.timestamp
         color = "green" if seconds < WEEK else "cyan" if seconds < MONTH else "yellow" if seconds < YEAR else None
         style = Style(color=color) if color else Style(dim=True)
-        return Text(f"{line.hash[:7]} {printable(line.author)[:9]:<9} {age(seconds):>3} ", style=style)
+        return Text(f"{line.hash[:7]} {fit_cells(printable(line.author), 8)} {age(seconds):>4} ", style=style)

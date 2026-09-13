@@ -244,8 +244,12 @@ async def test_the_blame_column_follows_the_files_that_are_opened(git_repo, tmp_
         assert app.query_one(CodeView).render_line(0).text.startswith(first)
 
 
-async def test_enter_on_a_blamed_line_opens_that_commit_in_the_log(git_repo, tmp_path):
-    first = Git(git_repo).log()[0]
+async def test_enter_on_a_blamed_line_opens_the_log_at_that_commit(git_repo, tmp_path):
+    (git_repo / "README.md").write_text("# Project\n\nchanged\n")
+    git(git_repo, "commit", "-qam", "Change the text")
+    (git_repo / "pyproject.toml").write_text("[project]\nname = 'other'\n")
+    git(git_repo, "commit", "-qam", "Rename the project")
+    changed = Git(git_repo).log()[1]
     app = make_app(git_repo, tmp_path)
     async with app.run_test(size=SIZE) as pilot:
         await ready(pilot)
@@ -253,10 +257,10 @@ async def test_enter_on_a_blamed_line_opens_that_commit_in_the_log(git_repo, tmp
         await ready(pilot)
         await pilot.press("b")
         await ready(pilot)
-        await pilot.press("enter")
-        await until(pilot, lambda: isinstance(app.screen, LogScreen) and app.screen.query_one(OptionList).highlighted == 0)
-        assert app.screen.query_one(OptionList).highlighted == 0
-        assert first.short in str(app.screen.query_one(OptionList).get_option_at_index(0).prompt)
+        await pilot.press("down", "down", "enter")
+        await until(pilot, lambda: isinstance(app.screen, LogScreen) and app.screen.query_one(OptionList).option_count)
+        options = app.screen.query_one(OptionList)
+        assert options.option_count == 2 and changed.short in str(options.get_option_at_index(0).prompt)
 
 
 async def test_enter_on_an_uncommitted_line_opens_the_changes(git_repo, tmp_path):
@@ -301,3 +305,72 @@ async def test_a_project_without_git_has_no_git_line(project, tmp_path):
     async with app.run_test(size=SIZE) as pilot:
         await ready(pilot)
         assert not app.query_one("#git").display and "⎇" not in app.sub_title
+
+
+async def test_the_directory_marks_are_worked_out_before_they_reach_the_ui_thread(git_repo, tmp_path, monkeypatch):
+    calls = []
+    real = FileTree.set_status
+    monkeypatch.setattr(FileTree, "set_status", lambda self, files, directories=None: calls.append(directories) or real(self, files, directories))
+    (git_repo / "README.md").write_text("changed\n")
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await until(pilot, lambda: "README.md M" in top_level(app))
+    assert calls and all(directories is not None for directories in calls)
+
+
+async def test_a_slow_git_is_left_alone_on_the_timer_but_still_answers_to_r(git_repo, tmp_path, monkeypatch):
+    monkeypatch.setattr(spyc.app, "GIT_INTERVAL", 0.2)
+    monkeypatch.setattr(spyc.app, "SLOW_GIT_SECONDS", 0.0)
+    asked = []
+    real = Git.status
+    monkeypatch.setattr(Git, "status", lambda self: asked.append(1) or real(self))
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await until(pilot, lambda: asked)
+        await pilot.pause(1.0)
+        assert len(asked) == 1
+        await pilot.press("R")
+        await until(pilot, lambda: len(asked) == 2)
+
+
+async def test_keys_of_the_main_view_do_nothing_inside_the_log(git_repo, tmp_path):
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("README.md")
+        await ready(pilot)
+        await pilot.press("l")
+        await until(pilot, lambda: isinstance(app.screen, LogScreen) and app.screen.query_one(DiffView).rows)
+        await pilot.press("l", "g", "i", "b", "e", "f", "colon")
+        await pilot.pause(0.3)
+        assert len(app.screen_stack) == 2
+        main = app.screen_stack[0]
+        assert main.query_one(CodeView).display and not app._blame_on
+
+
+async def test_blame_is_read_again_when_a_commit_was_made_elsewhere(git_repo, tmp_path):
+    (git_repo / "README.md").write_text("# Project\n\nA test project.\nMore\n")
+    app = make_app(git_repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("README.md")
+        await ready(pilot)
+        await pilot.press("b")
+        await until(pilot, lambda: app.query_one(CodeView).blame and app.query_one(CodeView).blame[3].uncommitted)
+        git(git_repo, "commit", "-qam", "Add a line")
+        await pilot.press("R")
+        await until(pilot, lambda: app.query_one(CodeView).blame and not app.query_one(CodeView).blame[3].uncommitted)
+
+
+async def test_r_tries_git_again_after_it_was_given_up_on(project, tmp_path):
+    app = make_app(project, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        assert app.git_enabled is False
+        git(project, "init", "-q")
+        git(project, "add", ".")
+        git(project, "commit", "-qm", "Start")
+        (project / "README.md").write_text("changed\n")
+        await pilot.press("R")
+        await until(pilot, lambda: "README.md M" in top_level(app))
+        assert app.git_enabled

@@ -19,6 +19,7 @@
 
 
 import subprocess
+import time
 from pathlib import Path
 
 from textual import work
@@ -38,6 +39,7 @@ from spyc.fuzzy import PathMatcher
 from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
 from spyc.git.repository import Git
+from spyc.git.status import rollup
 from spyc.git.summary import GitSummary
 from spyc.history import JumpHistory, Place
 from spyc.location import Location
@@ -59,7 +61,14 @@ from spyc.widgets.status_bar import StatusBar
 
 RELOAD_INTERVAL = 2.0
 GIT_INTERVAL = 10.0
+SLOW_GIT_SECONDS = 2.0
 MARKDOWN_LIMIT = 50_000
+# Keys that act on the main view, which is hidden behind the log, the changes
+# and the pickers while those are open.
+MAIN_VIEW_ACTIONS = frozenset({
+    "find_file", "search_in_file", "goto_line", "history_back", "history_forward", "show_log", "show_file_log",
+    "show_changes", "toggle_blame", "edit", "copy_location", "overview", "toggle_sidebar", "toggle_ignored",
+    "toggle_markdown", "refresh_project"})
 
 
 class SpycApp(App):
@@ -73,8 +82,8 @@ class SpycApp(App):
         Binding("f", "find_file", "Find file"),
         Binding("slash", "search_in_file", "Find in file"),
         Binding("colon", "goto_line", "Go to line"),
-        Binding("left_square_bracket", "history_back", "Back"),
-        Binding("right_square_bracket", "history_forward", "Forward"),
+        Binding("left_square_bracket", "history_back", "Back", show=False),
+        Binding("right_square_bracket", "history_forward", "Forward", show=False),
         Binding("l", "show_log", "Log"),
         Binding("L", "show_file_log", "File log", show=False),
         Binding("g", "show_changes", "Changes"),
@@ -100,6 +109,7 @@ class SpycApp(App):
         self.git = Git(project_root)
         self.git_enabled = True
         self._git_seen = False
+        self._git_slow = False
         self._git_files: dict[str, str] = {}
         self._blame_on = False
         self._start_location = start
@@ -108,6 +118,9 @@ class SpycApp(App):
         self._show_ignored = False
         self._index_generation = 0
         self._last_query = ""
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        return not (action in MAIN_VIEW_ACTIONS and len(self.screen_stack) > 1)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -153,7 +166,7 @@ class SpycApp(App):
         self._rendered.display = False
         self._tree.display = bool(self.store.get("sidebar", True))
         self.set_interval(RELOAD_INTERVAL, self._check_for_changes)
-        self.set_interval(GIT_INTERVAL, self._refresh_git)
+        self.set_interval(GIT_INTERVAL, self._poll_git)
         self._reload_index()
         self._refresh_git()
         start = self._start_location
@@ -192,27 +205,41 @@ class SpycApp(App):
             self._tree.reveal(focus)
 
     # Git is asked again on a timer, when the window regains focus, after the
-    # editor and on request, and never once it is clear that this is not a
-    # repository.
+    # editor and on request, and not at all once it is clear that this is not a
+    # repository. A repository that takes seconds to answer is left alone by
+    # the timer, which would otherwise keep it busy for good.
+    def _poll_git(self) -> None:
+        if not self._git_slow:
+            self._refresh_git()
+
     def _refresh_git(self) -> None:
         if self.git_enabled:
             self._load_git_status()
 
     @work(thread=True, exclusive=True, group="git-status", exit_on_error=False)
     def _load_git_status(self) -> None:
+        started = time.monotonic()
         status = self.git.status()
-        self.call_from_thread(self._git_status_ready, status, None if status is None else self.git.summary(status))
+        summary = None if status is None else self.git.summary(status)
+        directories = None if status is None else rollup(status)
+        slow = time.monotonic() - started > SLOW_GIT_SECONDS
+        self.call_from_thread(self._git_status_ready, status, summary, directories, slow)
 
-    def _git_status_ready(self, status: dict[str, str] | None, summary: GitSummary | None) -> None:
+    def _git_status_ready(self, status: dict[str, str] | None, summary: GitSummary | None,
+                          directories: dict[str, str] | None, slow: bool) -> None:
+        self._git_slow = slow
         if status is None:
             self.git_enabled = self._git_seen
             return
-        self._git_seen = True
-        self._git_files = status
-        self._tree.set_status(status)
+        changed = not self._git_seen or status != self._git_files
+        self._git_seen, self._git_files = True, status
         self._overview_pane.show_git(summary)
-        self.sub_title = printable(f"{self.project_root}  ⎇ {summary.branch}") if summary and summary.branch else self.sub_title
-        self._refresh_changes()
+        if summary and summary.branch:
+            self.sub_title = printable(f"{self.project_root}  ⎇ {summary.branch}")
+        if changed:
+            self._tree.set_status(status, directories)
+            self._refresh_changes()
+            self._refresh_blame()
 
     # The column of marks is reserved the moment a file is shown, and filled
     # in when git has answered.
@@ -442,7 +469,10 @@ class SpycApp(App):
                 await self._rendered.show(document.text)
         self._refresh_status()
 
+    # Asking for a refresh also gives git another chance: it may have failed
+    # once on a slow disk, or the folder may have become a repository since.
     def action_refresh_project(self) -> None:
+        self.git_enabled = True
         self._reload_index()
         self._refresh_git()
 

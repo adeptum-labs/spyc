@@ -142,3 +142,10 @@ async def test_status_reaches_nodes_opened_later_and_can_be_cleared():
         tree.set_status({})
         assert labels(tree.cursor_node.children) == ["main/java", "test"]
         assert labels(tree.root.children)[1] == "src"
+
+
+async def test_directory_marks_that_were_worked_out_elsewhere_are_used_as_given():
+    async with TreeApp().run_test() as pilot:
+        tree = pilot.app.query_one(FileTree)
+        tree.set_status({}, {"docs": "M"})
+        assert labels(tree.root.children)[0] == "docs M"

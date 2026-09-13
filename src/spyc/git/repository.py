@@ -71,11 +71,13 @@ class Git:
         output = self.run("status", "--porcelain=v2", "-z", "--untracked-files=all")
         return None if output is None else parse_status(output)
 
-    def log(self, limit: int = 200, skip: int = 0, path: str | None = None, grep: str | None = None
-            ) -> list[Commit] | None:
+    def log(self, limit: int = 200, skip: int = 0, path: str | None = None, grep: str | None = None,
+            revision: str | None = None) -> list[Commit] | None:
         arguments = ["log", "-z", f"--format={LOG_FORMAT}", f"--max-count={limit}", f"--skip={skip}"]
         if grep:
             arguments += ["-i", "--fixed-strings", f"--grep={grep}"]
+        if revision:
+            arguments.append(revision)
         if path:
             arguments += ["--follow", "--", path]
         output = self.run(*arguments)

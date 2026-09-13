@@ -29,7 +29,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, OptionList
 from textual.widgets.option_list import Option
 
-from spyc.diff_rows import rows_of
+from spyc.diff_rows import DiffRow, rows_of
 from spyc.git.log import Commit
 from spyc.git.repository import CommitDetail, Git
 from spyc.location import Location
@@ -72,7 +72,7 @@ class LogScreen(Screen[Location | None]):
 
     def __init__(self, git: Git, path: str | None = None, focus: str | None = None) -> None:
         super().__init__()
-        self._git, self._path, self._wanted = git, path, focus
+        self._git, self._path, self._revision = git, path, focus
         self._commits: list[Commit] = []
         self._grep = ""
         self._generation = 0
@@ -107,7 +107,7 @@ class LogScreen(Screen[Location | None]):
 
     @work(thread=True, group="log-page", exit_on_error=False)
     def _read_page(self, generation: int, skip: int, grep: str) -> None:
-        commits = self._git.log(PAGE_SIZE, skip, self._path, grep or None)
+        commits = self._git.log(PAGE_SIZE, skip, self._path, grep or None, self._revision)
         self.app.call_from_thread(self._page_ready, generation, commits)
 
     def _page_ready(self, generation: int, commits: list[Commit] | None) -> None:
@@ -124,22 +124,10 @@ class LogScreen(Screen[Location | None]):
         options = self.query_one(OptionList)
         now = time.time()
         options.add_options([Option(_label(commit, now)) for commit in commits])
-        if self._wanted is not None:
-            self._look_for_wanted_commit()
-        elif first and commits:
+        if first and commits:
             options.highlighted = 0
-
-    # A commit that was asked for may be on a later page, so pages are read
-    # until it turns up or there are no more.
-    def _look_for_wanted_commit(self) -> None:
-        options = self.query_one(OptionList)
-        found = next((index for index, commit in enumerate(self._commits) if commit.hash == self._wanted), None)
-        if found is not None:
-            options.highlighted, self._wanted = found, None
-        elif self._exhausted:
-            options.highlighted, self._wanted = 0 if self._commits else None, None
-        else:
-            self._load_page()
+            if self._revision:
+                self.sub_title = f"Log from {commits[0].short}"
 
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
         index = event.option_index
@@ -156,24 +144,36 @@ class LogScreen(Screen[Location | None]):
         if commit.hash in self._details:
             self._display(self._details[commit.hash])
         else:
+            self._say("Loading...")
             self._read_detail(commit.hash)
 
     @work(thread=True, group="log-detail", exit_on_error=False)
     def _read_detail(self, commit: str) -> None:
         self.app.call_from_thread(self._detail_ready, commit, self._git.commit_detail(commit))
 
+    # Whatever the outcome, the view never keeps the diff of another commit
+    # beside the one that is highlighted: Enter would open the wrong lines.
     def _detail_ready(self, commit: str, detail: CommitDetail | None) -> None:
-        if detail is None:
+        if detail is not None:
+            if len(self._details) >= CACHED_DETAILS:
+                self._details.pop(next(iter(self._details)))
+            self._details[commit] = detail
+        if not self._is_highlighted(commit):
             return
-        if len(self._details) >= CACHED_DETAILS:
-            self._details.pop(next(iter(self._details)))
-        self._details[commit] = detail
-        highlighted = self.query_one(OptionList).highlighted
-        if highlighted is not None and highlighted < len(self._commits) and self._commits[highlighted].hash == commit:
+        if detail is None:
+            self._say("Could not read this commit")
+        else:
             self._display(detail)
+
+    def _is_highlighted(self, commit: str) -> bool:
+        highlighted = self.query_one(OptionList).highlighted
+        return highlighted is not None and highlighted < len(self._commits) and self._commits[highlighted].hash == commit
 
     def _display(self, detail: CommitDetail) -> None:
         self.query_one(DiffView).show_rows(rows_of(detail.message, detail.diff))
+
+    def _say(self, text: str) -> None:
+        self.query_one(DiffView).show_rows([DiffRow("info", text)])
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.query_one(DiffView).focus()
@@ -187,7 +187,7 @@ class LogScreen(Screen[Location | None]):
 
     def _filtered(self, value: str | None) -> None:
         if value is not None:
-            self._grep, self._wanted = value.strip(), None
+            self._grep = value.strip()
             self._restart()
 
     def action_close(self) -> None:

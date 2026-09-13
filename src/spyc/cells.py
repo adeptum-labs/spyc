@@ -77,6 +77,16 @@ def char_at_cell(line: str, cell: int) -> int:
     return len(line)
 
 
+def fit_cells(text: str, width: int) -> str:
+    kept, used = "", 0
+    for char in text:
+        size = cell_len(char)
+        if used + size > width:
+            break
+        kept, used = kept + char, used + size
+    return kept + " " * (width - used)
+
+
 def line_cells(line: str) -> int:
     return cell_of_char(line, len(line))
 
