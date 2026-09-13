@@ -34,6 +34,7 @@ from spyc.state import StateStore
 from spyc.widgets.code_view import CodeView
 from spyc.widgets.diff_view import DiffView
 from spyc.widgets.file_tree import FileTree
+from waiting import until
 
 SIZE = (140, 40)
 
@@ -55,8 +56,7 @@ async def test_changed_files_are_marked_in_the_tree_from_the_start(git_repo, tmp
     (git_repo / "README.md").write_text("changed\n")
     app = make_app(git_repo, tmp_path)
     async with app.run_test(size=SIZE) as pilot:
-        await ready(pilot)
-        assert "README.md M" in top_level(app)
+        await until(pilot, lambda: "README.md M" in top_level(app))
         assert "src M" not in top_level(app)
 
 
@@ -74,8 +74,7 @@ async def test_capital_r_reads_the_state_again(git_repo, tmp_path):
         await ready(pilot)
         (git_repo / "README.md").write_text("changed\n")
         await pilot.press("R")
-        await ready(pilot)
-        assert "README.md M" in top_level(app)
+        await until(pilot, lambda: "README.md M" in top_level(app))
 
 
 async def test_the_marks_follow_the_editor(git_repo, tmp_path, monkeypatch):
@@ -87,8 +86,7 @@ async def test_the_marks_follow_the_editor(git_repo, tmp_path, monkeypatch):
         app.open_file("README.md")
         await pilot.pause()
         await pilot.press("e")
-        await ready(pilot)
-        assert "README.md M" in top_level(app)
+        await until(pilot, lambda: "README.md M" in top_level(app))
 
 
 async def test_the_marks_are_refreshed_when_the_window_regains_focus(git_repo, tmp_path):
@@ -97,19 +95,16 @@ async def test_the_marks_are_refreshed_when_the_window_regains_focus(git_repo, t
         await ready(pilot)
         (git_repo / "README.md").write_text("changed\n")
         app.post_message(events.AppFocus())
-        await ready(pilot)
-        assert "README.md M" in top_level(app)
+        await until(pilot, lambda: "README.md M" in top_level(app))
 
 
 async def test_the_marks_are_refreshed_on_a_timer(git_repo, tmp_path, monkeypatch):
     monkeypatch.setattr(spyc.app, "GIT_INTERVAL", 0.2)
     app = make_app(git_repo, tmp_path)
     async with app.run_test(size=SIZE) as pilot:
-        await ready(pilot)
+        await until(pilot, lambda: "README.md" in top_level(app))
         (git_repo / "README.md").write_text("changed\n")
-        await pilot.pause(1.0)
-        await ready(pilot)
-        assert "README.md M" in top_level(app)
+        await until(pilot, lambda: "README.md M" in top_level(app))
 
 
 async def test_changed_lines_are_marked_in_the_open_file(git_repo, tmp_path):
@@ -154,8 +149,7 @@ async def test_the_marks_follow_a_reload_of_the_file(git_repo, tmp_path):
         (git_repo / "README.md").write_text("# Project\n\nchanged\n")
         os.utime(git_repo / "README.md", (time.time() + 10, time.time() + 10))
         await app._check_for_changes()
-        await ready(pilot)
-        assert "▎" in code.render_line(2).text
+        await until(pilot, lambda: "▎" in code.render_line(2).text)
 
 
 async def test_l_opens_the_log_and_enter_on_a_diff_line_opens_that_file(git_repo, tmp_path):
@@ -165,15 +159,13 @@ async def test_l_opens_the_log_and_enter_on_a_diff_line_opens_that_file(git_repo
     async with app.run_test(size=SIZE) as pilot:
         await ready(pilot)
         await pilot.press("l")
-        await pilot.pause(0.8)
-        assert isinstance(app.screen, LogScreen)
+        await until(pilot, lambda: isinstance(app.screen, LogScreen) and app.screen.query_one(DiffView).rows)
         await pilot.press("enter")
         rows = app.screen.query_one(DiffView).rows
         add = next(index for index, row in enumerate(rows) if row.kind == "add")
         await pilot.press(*["down"] * add, "enter")
-        await pilot.pause(0.3)
-        code = app.query_one(CodeView)
-        assert code.display_path == "README.md" and code.cursor_row == 3
+        await until(pilot, lambda: app.query_one(CodeView).display_path == "README.md")
+        await until(pilot, lambda: app.query_one(CodeView).cursor_row == 3)
 
 
 async def test_capital_l_shows_the_history_of_the_open_file(git_repo, tmp_path):
@@ -183,8 +175,8 @@ async def test_capital_l_shows_the_history_of_the_open_file(git_repo, tmp_path):
         app.open_file("README.md")
         await pilot.pause()
         await pilot.press("L")
-        await pilot.pause(0.5)
-        assert isinstance(app.screen, LogScreen) and app.screen.sub_title == "Log of README.md"
+        await until(pilot, lambda: isinstance(app.screen, LogScreen))
+        assert app.screen.sub_title == "Log of README.md"
 
 
 async def test_capital_l_without_an_open_file_says_what_is_needed(git_repo, tmp_path, monkeypatch):
@@ -205,8 +197,7 @@ async def test_g_opens_the_changes(git_repo, tmp_path):
     async with app.run_test(size=SIZE) as pilot:
         await ready(pilot)
         await pilot.press("g")
-        await pilot.pause(0.8)
-        assert isinstance(app.screen, ChangesScreen)
+        await until(pilot, lambda: isinstance(app.screen, ChangesScreen) and app.screen.query_one(DiffView).rows)
         titles = {row.text.split("  ")[0] for row in app.screen.query_one(DiffView).rows if row.kind == "file"}
         assert titles == {"modified README.md", "added new.py"}
 
@@ -263,8 +254,7 @@ async def test_enter_on_a_blamed_line_opens_that_commit_in_the_log(git_repo, tmp
         await pilot.press("b")
         await ready(pilot)
         await pilot.press("enter")
-        await pilot.pause(0.8)
-        assert isinstance(app.screen, LogScreen)
+        await until(pilot, lambda: isinstance(app.screen, LogScreen) and app.screen.query_one(OptionList).highlighted == 0)
         assert app.screen.query_one(OptionList).highlighted == 0
         assert first.short in str(app.screen.query_one(OptionList).get_option_at_index(0).prompt)
 
@@ -279,8 +269,7 @@ async def test_enter_on_an_uncommitted_line_opens_the_changes(git_repo, tmp_path
         await pilot.press("b")
         await ready(pilot)
         await pilot.press("down", "down", "down", "enter")
-        await pilot.pause(0.8)
-        assert isinstance(app.screen, ChangesScreen)
+        await until(pilot, lambda: isinstance(app.screen, ChangesScreen))
 
 
 async def test_b_outside_a_repository_says_so(project, tmp_path, monkeypatch):

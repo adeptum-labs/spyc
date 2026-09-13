@@ -37,4 +37,4 @@ jobs:
         run: pip install '.[dev]'
 
       - name: Run the unit tests
-        run: pytest -q
+        run: pytest -q -n auto

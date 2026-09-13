@@ -53,8 +53,9 @@ def history(repo):
 
 
 async def settle(pilot):
-    await pilot.app.workers.wait_for_complete()
-    await pilot.pause(0.5)
+    for _ in range(2):
+        await pilot.app.workers.wait_for_complete()
+        await pilot.pause(0.4)
 
 
 def rows(pilot):

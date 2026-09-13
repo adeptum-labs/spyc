@@ -40,8 +40,9 @@ class ChangesApp(App):
 
 
 async def settle(pilot):
-    await pilot.app.workers.wait_for_complete()
-    await pilot.pause(0.3)
+    for _ in range(2):
+        await pilot.app.workers.wait_for_complete()
+        await pilot.pause(0.3)
 
 
 def rows(pilot):
