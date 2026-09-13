@@ -84,3 +84,9 @@ def test_outside_a_repository_there_is_no_log(tmp_path):
     (365 * 86400, "1y"), (800 * 86400, "2y"), (-5, "now")])
 def test_ages_are_short(seconds, expected):
     assert age(seconds) == expected
+
+
+def test_a_commit_whose_fields_cannot_be_split_is_skipped_not_fatal():
+    bad = "h\x1fs\x1fAda\x1fLovelace\x1f1\x1f\x1fsubject\0"
+    good = "g\x1fg\x1fBob\x1f2\x1f\x1fSubject\0"
+    assert [commit.hash for commit in parse_log(bad + good)] == ["g"]

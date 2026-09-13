@@ -19,6 +19,7 @@
 
 
 import os
+import stat
 import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -26,13 +27,17 @@ from pathlib import Path
 
 from spyc.git.blame import BlameLine, parse_blame
 from spyc.git.changes import LineChanges, parse_hunks
-from spyc.git.diff import Diff, diff_of_new_file, parse_diff
+from spyc.git.diff import DIFF_LINE_LIMIT, Diff, FileDiff, diff_of_new_file, parse_diff
 from spyc.git.log import LOG_FORMAT, Commit, parse_log
 from spyc.git.status import parse_status
 from spyc.git.summary import GitSummary
 
 TIMEOUT_SECONDS = 30.0
 UNTRACKED_FILE_LIMIT = 1024 * 1024
+# What the user's own git settings would change in the output that is parsed.
+NEUTRAL_SETTINGS = ("color.ui=never", "color.diff=false", "core.quotepath=false", "diff.noprefix=false",
+                    "diff.mnemonicPrefix=false", "diff.suppressBlankEmpty=false", "log.showSignature=false")
+DIFF_OPTIONS = ("--no-ext-diff", "--no-textconv")
 
 
 @dataclass(frozen=True)
@@ -51,10 +56,11 @@ class Git:
 
     def run(self, *arguments: str) -> str | None:
         # Optional locks stay off so that polling never fights the user's own
-        # git commands for index.lock.
+        # git commands for index.lock. Paths are literal: a file named [id].tsx
+        # is not a pattern.
         environment = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
-        command = ["git", "--no-pager", "-C", str(self.root), "-c", "color.ui=never", "-c", "core.quotepath=false",
-                   *arguments]
+        options = [part for setting in NEUTRAL_SETTINGS for part in ("-c", setting)]
+        command = ["git", "--no-pager", "--literal-pathspecs", "-C", str(self.root), *options, *arguments]
         try:
             result = subprocess.run(command, capture_output=True, env=environment, timeout=TIMEOUT_SECONDS)
         except (OSError, subprocess.TimeoutExpired):
@@ -88,35 +94,58 @@ class Git:
 
     def blame(self, path: str) -> list[BlameLine] | None:
         output = self.run("blame", "--porcelain", "--", path)
+        if output is None:
+            # A global blame.ignoreRevsFile that names a file this repository
+            # does not have makes blame fail outright.
+            output = self.run("blame", "--porcelain", "--no-ignore-revs-file", "--", path)
         return None if output is None else parse_blame(output)
 
     def commit_detail(self, commit: str) -> CommitDetail | None:
         message = self.run("show", "-s", "--format=%B", commit)
-        patch = self.run("show", "--format=", "--patch", "-M", "--diff-merges=first-parent", commit)
+        patch = self.run("show", "--format=", "--patch", *DIFF_OPTIONS, "-M", "--diff-merges=first-parent", commit)
         return None if message is None or patch is None else CommitDetail(message.rstrip("\n"), parse_diff(patch))
 
     # Untracked files are not part of any git diff, so the caller names them
     # and they are shown as wholly added.
     def working_diff(self, untracked: Sequence[str]) -> Diff | None:
-        options = ("diff", "--no-ext-diff", "-M")
+        options = ("diff", *DIFF_OPTIONS, "-M")
         output = self.run(*options, "HEAD")
         if output is None:
             output = self.run(*options, "--cached")
         if output is None:
             return None
         diff = parse_diff(output)
+        shown = sum(len(file.lines) for file in diff.files)
         for path in untracked:
-            try:
-                with (self.root / path).open("rb") as handle:
-                    diff.files.append(diff_of_new_file(path, handle.read(UNTRACKED_FILE_LIMIT)))
-            except OSError:
+            if shown >= DIFF_LINE_LIMIT:
+                diff.truncated = True
+                break
+            file = self._new_file_diff(path)
+            if file is None:
                 continue
+            if shown + len(file.lines) > DIFF_LINE_LIMIT:
+                file.lines = file.lines[:DIFF_LINE_LIMIT - shown]
+                diff.truncated = True
+            diff.files.append(file)
+            shown += len(file.lines)
         return diff
+
+    # Only plain files are read: a link would show the file it points to, which
+    # may lie outside the project, and reading a pipe never ends.
+    def _new_file_diff(self, path: str) -> FileDiff | None:
+        target = self.root / path
+        try:
+            if not stat.S_ISREG(target.lstat().st_mode):
+                return None
+            with target.open("rb") as handle:
+                return diff_of_new_file(path, handle.read(UNTRACKED_FILE_LIMIT))
+        except OSError:
+            return None
 
     # Before the first commit there is no HEAD to compare with, and the staged
     # lines are compared with nothing instead.
     def line_changes(self, path: str) -> LineChanges | None:
-        options = ("diff", "-U0", "--no-ext-diff")
+        options = ("diff", "-U0", *DIFF_OPTIONS)
         output = self.run(*options, "HEAD", "--", path)
         if output is None:
             output = self.run(*options, "--cached", "--", path)

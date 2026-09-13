@@ -112,3 +112,21 @@ def test_the_working_tree_diff_covers_staged_unstaged_and_untracked_files(git_re
 def test_outside_a_repository_there_is_no_diff(tmp_path):
     assert Git(tmp_path).working_diff([]) is None
     assert Git(tmp_path).commit_detail("abc") is None
+
+
+def test_untracked_links_and_pipes_are_not_followed(git_repo, tmp_path):
+    import os
+    (tmp_path / "outside.txt").write_text("secret\n")
+    (git_repo / "link").symlink_to(tmp_path / "outside.txt")
+    os.mkfifo(git_repo / "pipe")
+    write_files(git_repo, {"real.py": "x = 1\n"})
+    diff = Git(git_repo).working_diff(["link", "pipe", "real.py"])
+    assert [file.path for file in diff.files] == ["real.py"]
+
+
+def test_untracked_files_stop_at_the_line_limit_and_the_diff_says_so(git_repo, monkeypatch):
+    monkeypatch.setattr("spyc.git.repository.DIFF_LINE_LIMIT", 15)
+    write_files(git_repo, {name: "line\n" * 10 for name in ("a.py", "b.py", "c.py")})
+    diff = Git(git_repo).working_diff(["a.py", "b.py", "c.py"])
+    assert diff.truncated and sum(len(file.lines) for file in diff.files) == 15
+    assert [file.path for file in diff.files] == ["a.py", "b.py"]

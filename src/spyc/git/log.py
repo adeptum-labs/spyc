@@ -38,6 +38,9 @@ class Commit:
 def parse_log(output: str) -> list[Commit]:
     commits = []
     for entry in filter(None, output.split("\0")):
-        full, short, author, timestamp, refs, subject = entry.strip("\n").split(FIELD_SEPARATOR, 5)
-        commits.append(Commit(full, short, author, int(timestamp), refs, subject))
+        try:
+            full, short, author, timestamp, refs, subject = entry.strip("\n").split(FIELD_SEPARATOR, 5)
+            commits.append(Commit(full, short, author, int(timestamp), refs, subject))
+        except ValueError:
+            continue
     return commits

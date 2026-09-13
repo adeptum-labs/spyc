@@ -20,6 +20,7 @@
 
 import logging
 import time
+from dataclasses import replace
 
 from rich.text import Text
 from textual import events, work
@@ -127,6 +128,9 @@ class CodeView(ScrollView, can_focus=True):
     # shows it, so that it does not appear and push the text aside after the
     # marks of each new file have been read.
     def set_changes(self, changes: LineChanges | None) -> None:
+        if changes is not None and changes.deleted:
+            last = max(1, len(self._lines()))
+            changes = replace(changes, deleted=frozenset(min(line, last) for line in changes.deleted))
         self._changes = changes
         self._rebuild_gutters()
         self._repaint()

@@ -60,3 +60,10 @@ async def test_the_column_stays_when_another_file_is_shown(tmp_path):
         (tmp_path / "b.txt").write_text("b\n")
         view.show(load_document(tmp_path / "b.txt"))
         assert view.render_line(0).text.startswith("   1   b")
+
+
+async def test_a_deletion_at_the_end_of_the_file_is_marked_on_its_last_line(tmp_path):
+    async with ViewApp().run_test(size=(80, 24)) as pilot:
+        view = await open_file(pilot, tmp_path, "a.txt", b"a\nb\n")
+        view.set_changes(LineChanges(deleted=frozenset({3})))
+        assert view.render_line(1).text.startswith("   2 ▔ b")
