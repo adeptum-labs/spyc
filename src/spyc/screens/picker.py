@@ -56,9 +56,9 @@ class Picker(ModalScreen[Choice | None]):
         Binding("alt+w", "toggle_word", show=False),
     ]
 
-    def __init__(self, source: PickerSource) -> None:
+    def __init__(self, source: PickerSource, initial: str = "") -> None:
         super().__init__()
-        self._source = source
+        self._source, self._initial = source, initial
         self._items: list[Item] = []
         self._preview_timer = None
         self._search_timer = None
@@ -66,7 +66,7 @@ class Picker(ModalScreen[Choice | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Input(placeholder=self._source.placeholder)
+            yield Input(self._initial, placeholder=self._source.placeholder)
             yield Static(id="picker-status")
             with Horizontal():
                 yield OptionList()
@@ -75,7 +75,7 @@ class Picker(ModalScreen[Choice | None]):
     def on_mount(self) -> None:
         self.query_one(CodeView).can_focus = False
         self.set_class(self.app.size.width < NARROW_WIDTH, "-narrow")
-        self._search_now("")
+        self._search_now(self._initial)
 
     def on_resize(self, event: events.Resize) -> None:
         self.set_class(event.size.width < NARROW_WIDTH, "-narrow")

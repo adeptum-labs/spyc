@@ -86,3 +86,11 @@ def test_the_preview_loads_the_file_and_a_vanished_file_gives_none(source, tmp_p
     assert source.preview(item).lines[0] == "def foo():"
     (tmp_path / "a.py").unlink()
     assert source.preview(item) is None
+
+
+def test_a_search_can_start_in_whole_word_mode(tmp_path):
+    write_files(tmp_path, {"a.txt": "foo\nfoobar\n"})
+    paths = build_index(tmp_path).paths
+    picked = SearchSource(tmp_path, lambda: paths, whole_word=True)
+    assert picked.mode_text() == "literal · whole word"
+    assert [item.line for item in picked.search("foo")] == [1]

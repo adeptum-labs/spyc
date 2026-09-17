@@ -132,3 +132,22 @@ async def test_every_cursor_change_is_announced(tmp_path):
         await pilot.press("down")
         await pilot.pause()
         assert app.moves[-1] == (1, 0)
+
+
+async def test_the_word_under_the_cursor_is_found_where_it_is_touched(tmp_path):
+    async with ViewApp().run_test(size=(80, 24)) as pilot:
+        view = await open_file(pilot, tmp_path, "a.txt", "foo_bar = baz.qux(1)\néa = 2\n".encode())
+        assert view.word_at_cursor() == "foo_bar"
+        view.goto(1, 7)
+        assert view.word_at_cursor() == "foo_bar"
+        view.goto(1, 8)
+        assert view.word_at_cursor() is None
+        view.goto(1, 13)
+        assert view.word_at_cursor() == "baz"
+        view.goto(2, 1)
+        assert view.word_at_cursor() == "éa"
+
+
+async def test_there_is_no_word_in_an_empty_view():
+    async with ViewApp().run_test(size=(80, 24)) as pilot:
+        assert pilot.app.query_one(CodeView).word_at_cursor() is None

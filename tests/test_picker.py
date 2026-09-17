@@ -48,10 +48,10 @@ class FakeSource:
 class PickerApp(App):
     def __init__(self, source):
         super().__init__()
-        self.source, self.result, self.moves = source, "unset", []
+        self.source, self.result, self.moves, self.picker_query = source, "unset", [], ""
 
     async def on_mount(self):
-        await self.push_screen(Picker(self.source), self.done)
+        await self.push_screen(Picker(self.source, self.picker_query), self.done)
 
     def done(self, result):
         self.result = result
@@ -205,3 +205,12 @@ async def test_a_source_can_switch_modes_and_says_what_it_found():
         await pilot.press("alt+r")
         await pilot.pause()
         assert source.regex and status.render().plain == "regex  2 searches"
+
+
+async def test_a_picker_can_start_with_a_query_already_typed():
+    app = PickerApp(FakeSource())
+    app.picker_query = "al"
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        assert rows(pilot) == ["alpha", "alps"]
+        assert pilot.app.screen.query_one("Input").value == "al"

@@ -36,9 +36,9 @@ class SearchSource:
     threaded = True
     debounce = 0.25
 
-    def __init__(self, root: Path, paths: Callable[[], Sequence[str]]) -> None:
+    def __init__(self, root: Path, paths: Callable[[], Sequence[str]], whole_word: bool = False) -> None:
         self._root, self._paths = root, paths
-        self.regex = self.whole_word = False
+        self.regex, self.whole_word = False, whole_word
         self._query = ""
         self._result = SearchResult()
 

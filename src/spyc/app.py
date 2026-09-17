@@ -20,7 +20,7 @@
 
 import subprocess
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from textual import work
 from textual import events
@@ -47,6 +47,9 @@ from spyc.overview import Overview, build_overview
 from spyc.picking import Choice
 from spyc.printable import printable
 from spyc.search_picker import SearchSource
+from spyc.symbol_index import Located, SymbolIndex, default_cache_path
+from spyc.symbol_picker import SymbolSource
+from spyc.symbols import symbols_of
 from spyc.screens.changes import ChangesScreen
 from spyc.screens.help import HelpScreen
 from spyc.screens.log import LogScreen
@@ -67,9 +70,15 @@ MARKDOWN_LIMIT = 50_000
 # Keys that act on the main view, which is hidden behind the log, the changes
 # and the pickers while those are open.
 MAIN_VIEW_ACTIONS = frozenset({
-    "find_file", "search_project", "search_in_file", "goto_line", "history_back", "history_forward", "show_log", "show_file_log",
+    "find_file", "search_project", "show_outline", "find_symbol", "go_to_definition", "search_in_file", "goto_line", "history_back", "history_forward", "show_log", "show_file_log",
     "show_changes", "toggle_blame", "edit", "copy_location", "overview", "toggle_sidebar", "toggle_ignored",
     "toggle_markdown", "refresh_project"})
+
+
+def _nearness(candidate: Located, current: str) -> tuple:
+    place, here = PurePosixPath(candidate.path), PurePosixPath(current)
+    return (place != here, place.parent != here.parent, place.suffix != here.suffix, candidate.path,
+            candidate.symbol.line)
 
 
 class SpycApp(App):
@@ -82,6 +91,9 @@ class SpycApp(App):
     BINDINGS = [
         Binding("f", "find_file", "Find file"),
         Binding("s", "search_project", "Search"),
+        Binding("o", "show_outline", "Outline"),
+        Binding("t", "find_symbol", "Symbols", show=False),
+        Binding("d", "go_to_definition", "Definition"),
         Binding("slash", "search_in_file", "Find in file"),
         Binding("colon", "goto_line", "Go to line"),
         Binding("left_square_bracket", "history_back", "Back", show=False),
@@ -118,6 +130,7 @@ class SpycApp(App):
         self._max_files = max_files
         self._matcher: PathMatcher | None = None
         self._paths: tuple[str, ...] | None = None
+        self._symbols = SymbolIndex(project_root, default_cache_path(project_root))
         self._show_ignored = False
         self._index_generation = 0
         self._last_query = ""
@@ -192,11 +205,18 @@ class SpycApp(App):
         self.call_from_thread(self._index_ready, generation, index, TreeModel(index.paths), build_overview(index),
                               PathMatcher(index.paths))
 
+    # The definitions are read in the background after the files are known; a
+    # newer file list makes the running pass stop.
+    @work(thread=True, exclusive=True, group="symbols", exit_on_error=False)
+    def _index_symbols(self, generation: int, paths: tuple[str, ...]) -> None:
+        self._symbols.update(paths, stop=lambda: generation != self._index_generation)
+
     def _index_ready(self, generation: int, index: FileIndex, model: TreeModel, overview: Overview,
                      matcher: PathMatcher) -> None:
         if generation != self._index_generation:
             return
         self.overview, self._matcher, self._paths = overview, matcher, index.paths
+        self._index_symbols(generation, index.paths)
         self._tree.load(model)
         self._overview_pane.show(overview)
         if index.truncated:
@@ -331,6 +351,59 @@ class SpycApp(App):
             self.notify("Still reading the project files")
             return
         self.push_screen(Picker(SearchSource(self.project_root, lambda: self._paths)), self._file_chosen)
+
+    def action_show_outline(self) -> None:
+        code = self._viewing()
+        if code is None:
+            self.notify("Open a file to see its outline")
+            return
+        symbols = symbols_of(code.document.text, code.document.language)
+        if not symbols:
+            self.notify("No outline for this file")
+            return
+        entries = [Located(code.display_path, symbol) for symbol in symbols]
+        source = SymbolSource(self.project_root, lambda: entries, "Jump to a definition in this file", False)
+        self.push_screen(Picker(source), self._file_chosen)
+
+    def action_find_symbol(self) -> None:
+        source = SymbolSource(self.project_root, self._symbols.all, "Find a definition in the project", True,
+                              self._symbol_progress)
+        self.push_screen(Picker(source), self._file_chosen)
+
+    def _symbol_progress(self) -> str:
+        done, total = self._symbols.done, self._symbols.total
+        return f"indexing {done}/{total}" if done < total else ""
+
+    # The name under the cursor is looked up among the definitions of the
+    # project, the nearest first. With none but the one under the cursor the
+    # places where the name is used are more useful than nothing.
+    def action_go_to_definition(self) -> None:
+        code = self._viewing()
+        if code is None:
+            self.notify("Open a file to look up a definition")
+            return
+        word = code.word_at_cursor()
+        if word is None:
+            self.notify("Put the cursor on a name first")
+            return
+        here = (code.display_path, code.cursor_row + 1)
+        candidates = [item for item in self._definitions_of(word, code) if (item.path, item.symbol.line) != here]
+        if len(candidates) == 1:
+            self.open_file(candidates[0].path, candidates[0].symbol.line)
+        elif candidates:
+            source = SymbolSource(self.project_root, lambda: candidates, f"Definitions of {printable(word)}", True)
+            self.push_screen(Picker(source), self._file_chosen)
+        else:
+            self.notify(f"No definition of {printable(word)} found; showing where it is used", markup=False)
+            source = SearchSource(self.project_root, lambda: self._paths or (), whole_word=True)
+            self.push_screen(Picker(source, word), self._file_chosen)
+
+    def _definitions_of(self, word: str, code: CodeView) -> list[Located]:
+        document = code.document
+        current = [Located(code.display_path, symbol) for symbol in symbols_of(document.text, document.language)
+                   if symbol.name == word]
+        elsewhere = [item for item in self._symbols.lookup(word) if item.path != code.display_path]
+        return sorted(current + elsewhere, key=lambda item: _nearness(item, code.display_path))
 
     def _file_chosen(self, choice: Choice | None) -> None:
         if choice is not None:

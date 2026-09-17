@@ -30,6 +30,9 @@ from textual.widgets import Static
 HELP_ROWS: list[tuple[str, str | None, str]] = [
     ("f", "find_file", "Find a file by name; name:line jumps to a line"),
     ("s", "search_project", "Search the text of the project; alt+r switches to a pattern, alt+w to whole words"),
+    ("o", "show_outline", "Outline: the definitions of this file"),
+    ("t", "find_symbol", "Find a definition anywhere in the project"),
+    ("d", "go_to_definition", "Go to the definition of the name under the cursor; [ comes back"),
     ("/", "search_in_file", "Find in the file; n and N step through the matches"),
     (":", "goto_line", "Go to a line"),
     ("[  ]", "history_back", "Back through the files you have visited"),

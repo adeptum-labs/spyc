@@ -19,6 +19,7 @@
 
 
 import logging
+import re
 import time
 from dataclasses import replace
 
@@ -44,6 +45,7 @@ from spyc.widgets.code_theme import code_theme
 
 log = logging.getLogger(__name__)
 CACHED_ROWS = 512
+WORD = re.compile(r"\w+")
 
 
 class CodeView(ScrollView, can_focus=True):
@@ -153,6 +155,13 @@ class CodeView(ScrollView, can_focus=True):
     @property
     def blame(self) -> list[BlameLine] | None:
         return self._blame
+
+    def word_at_cursor(self) -> str | None:
+        lines = self._lines()
+        if not lines:
+            return None
+        return next((word.group() for word in WORD.finditer(lines[self.cursor_row])
+                     if word.start() <= self.cursor_column <= word.end()), None)
 
     def action_open_commit(self) -> None:
         if self._blame is not None and self.cursor_row < len(self._blame):
