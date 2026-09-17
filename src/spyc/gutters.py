@@ -24,6 +24,7 @@ from rich.style import Style
 from rich.text import Text
 
 from spyc.cells import fit_cells
+from spyc.coverage.model import Lines
 from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
 from spyc.printable import printable
@@ -70,6 +71,25 @@ class ChangeGutter:
             mark = DELETED_MARK
         else:
             mark = NO_MARK
+        return Text(mark[0], style=mark[1])
+
+
+COVERED_MARK = ("● ", Style(color="green"))
+PARTIAL_MARK = ("◐ ", Style(color="yellow"))
+MISSED_MARK = ("○ ", Style(color="red"))
+
+
+class CoverageGutter:
+    width = 2
+
+    def __init__(self, lines: Lines) -> None:
+        self._lines = lines
+
+    def render(self, row: int, is_cursor_row: bool, theme: CodeTheme) -> Text:
+        line = self._lines.get(row + 1)
+        if line is None:
+            return Text(*NO_MARK)
+        mark = MISSED_MARK if line.hits == 0 else PARTIAL_MARK if line.partial else COVERED_MARK
         return Text(mark[0], style=mark[1])
 
 

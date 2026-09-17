@@ -33,10 +33,11 @@ from textual.scroll_view import ScrollView
 from textual.strip import Strip
 
 from spyc.cells import cell_of_char, char_at_cell, widest_cells
+from spyc.coverage.model import Lines
 from spyc.document import Document
 from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
-from spyc.gutters import BlameGutter, ChangeGutter, Gutter, LineNumberGutter
+from spyc.gutters import BlameGutter, ChangeGutter, CoverageGutter, Gutter, LineNumberGutter
 from spyc.line_text import build_line, segments_of
 from spyc.matches import find_matches
 from spyc.syntax.factory import make_highlighter
@@ -92,6 +93,7 @@ class CodeView(ScrollView, can_focus=True):
         self._theme = code_theme(dark=True)
         self._gutters: list[Gutter] = []
         self._changes: LineChanges | None = None
+        self._coverage: Lines | None = None
         self._blame: list[BlameLine] | None = None
         self._blame_time = 0.0
         self._width_of_text = 1
@@ -117,6 +119,7 @@ class CodeView(ScrollView, can_focus=True):
         self.document, self.display_path = document, display_path
         self._highlighter = PlainHighlighter()
         self._changes = None if self._changes is None else LineChanges()
+        self._coverage = None if self._coverage is None else {}
         self._blame = None if self._blame is None else []
         self._width_of_text = widest_cells(document.lines) + 1
         self._rebuild_gutters()
@@ -137,12 +140,25 @@ class CodeView(ScrollView, can_focus=True):
         self._rebuild_gutters()
         self._repaint()
 
+    # The lines of the open file that the tests ran. As with the change marks,
+    # None hides the column and any value, even an empty one, shows it.
+    def set_coverage(self, lines: Lines | None) -> None:
+        self._coverage = lines
+        self._rebuild_gutters()
+        self._repaint()
+
+    @property
+    def coverage(self) -> Lines | None:
+        return self._coverage
+
     def _rebuild_gutters(self) -> None:
         lines = self._lines()
         self._gutters = [] if self._blame is None else [BlameGutter(self._blame, self._blame_time)]
         self._gutters.append(LineNumberGutter(len(lines)))
         if self._changes is not None:
             self._gutters.append(ChangeGutter(self._changes))
+        if self._coverage is not None:
+            self._gutters.append(CoverageGutter(self._coverage))
         self.virtual_size = Size(self._width_of_text + self.gutter_width, max(1, len(lines)))
 
     # The commit of each line, shown left of the line numbers. Like the change
