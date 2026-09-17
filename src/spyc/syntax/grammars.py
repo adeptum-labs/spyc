@@ -66,3 +66,16 @@ def load_tags(language: Language) -> tuple[TreeSitterLanguage, str] | None:
     except Exception as error:
         log.warning("No tags queries for %s: %s", language.id, error)
         return None
+
+
+# The grammar of the language with the queries that find its packages, classes and imports.
+@cache
+def load_imports(language: Language) -> tuple[TreeSitterLanguage, str] | None:
+    grammar = load_grammar(language)
+    if grammar is None or not language.imports:
+        return None
+    try:
+        return grammar[0], _read_queries(language.imports)
+    except Exception as error:
+        log.warning("No import queries for %s: %s", language.id, error)
+        return None

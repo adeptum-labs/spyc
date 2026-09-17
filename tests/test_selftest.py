@@ -71,3 +71,16 @@ def test_the_self_test_flag_reports_every_problem_and_fails(monkeypatch, capsys)
     monkeypatch.setattr(entry, "problems", lambda: ["No tree-sitter grammar for Python", "Highlighting Go failed: boom"])
     assert entry.main(["--self-test"]) == 1
     assert capsys.readouterr().err.splitlines() == ["spyc: No tree-sitter grammar for Python", "spyc: Highlighting Go failed: boom"]
+
+
+def test_an_import_query_that_does_not_compile_is_named(monkeypatch):
+    real = selftest.load_imports
+    monkeypatch.setattr(selftest, "load_imports",
+                        lambda language: (real(language)[0], "(no_such_node_type) @name") if language.id == "java" else real(language))
+    (problem,) = selftest.problems()
+    assert problem.startswith("Import queries for Java do not compile: ")
+
+
+def test_import_queries_that_cannot_be_loaded_are_named(monkeypatch):
+    monkeypatch.setattr(selftest, "load_imports", lambda language: None)
+    assert {"No import queries for Java", "No import queries for Kotlin"} <= set(selftest.problems())

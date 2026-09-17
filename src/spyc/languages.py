@@ -38,6 +38,7 @@ class Language:
     highlights: tuple[tuple[str, str], ...] = ()
     lexer: str | None = None
     tags: tuple[tuple[str, str], ...] = ()
+    imports: tuple[tuple[str, str], ...] = ()
 
 
 def grammar(package: str, function: str = "language", *queries: tuple[str, str]) -> dict:
@@ -64,6 +65,11 @@ TAGS = {
     "tsx": (TS_TAGS, JS_TAGS, OWN_TS_TAGS),
     "kotlin": (("spyc.syntax", "queries/kotlin/tags.scm"),),
     "bash": (("spyc.syntax", "queries/bash/tags.scm"),),
+}
+# Queries that find the package, the classes and the imports of a file, for the dependency graph.
+IMPORTS = {
+    "java": (("spyc.syntax", "queries/java/imports.scm"),),
+    "kotlin": (("spyc.syntax", "queries/kotlin/imports.scm"),),
 }
 
 # A query that extends another comes first, because the first matching pattern wins.
@@ -103,7 +109,8 @@ _DEFINED = (
              **grammar("tree_sitter_xml", "language_xml", ("tree_sitter_xml", "queries/xml/highlights.scm"))),
     Language("yaml", "YAML", (".yml", ".yaml"), (".clang-format",), lexer="yaml", **grammar("tree_sitter_yaml")),
 )
-LANGUAGES = tuple(replace(language, tags=TAGS.get(language.id, ())) for language in _DEFINED)
+LANGUAGES = tuple(replace(language, tags=TAGS.get(language.id, ()), imports=IMPORTS.get(language.id, ()))
+                  for language in _DEFINED)
 LANGUAGES_BY_ID = {language.id: language for language in LANGUAGES}
 BY_EXTENSION = {extension: language for language in LANGUAGES for extension in language.extensions}
 BY_FILENAME = {filename: language for language in LANGUAGES for filename in language.filenames}
