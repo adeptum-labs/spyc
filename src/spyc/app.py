@@ -20,6 +20,7 @@
 
 import subprocess
 import time
+from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
 
 from textual import work
@@ -31,6 +32,9 @@ from textual.widget import Widget
 from textual.widgets import Footer, Header, OptionList
 from textual.worker import Worker, WorkerState, get_current_worker
 
+from spyc.coverage.index import Coverage
+from spyc.coverage.reports import find_reports, load_reports
+from spyc.coverage.text import coverage_status
 from spyc.document import load_document
 from spyc.editor import editor_command
 from spyc.file_index import MAX_INDEXED_FILES, FileIndex, build_index
@@ -72,7 +76,7 @@ MARKDOWN_LIMIT = 50_000
 # and the pickers while those are open.
 MAIN_VIEW_ACTIONS = frozenset({
     "find_file", "search_project", "show_outline", "find_symbol", "go_to_definition", "search_in_file", "goto_line", "history_back", "history_forward", "show_log", "show_file_log",
-    "show_changes", "toggle_blame", "edit", "copy_location", "overview", "toggle_sidebar", "toggle_ignored",
+    "show_changes", "toggle_blame", "toggle_coverage", "edit", "copy_location", "overview", "toggle_sidebar", "toggle_ignored",
     "toggle_markdown", "refresh_project"})
 
 
@@ -105,6 +109,7 @@ class SpycApp(App):
         Binding("L", "show_file_log", "File log", show=False),
         Binding("g", "show_changes", "Changes", show=False),
         Binding("b", "toggle_blame", "Blame", show=False),
+        Binding("c", "toggle_coverage", "Coverage", show=False),
         Binding("e", "edit", "Edit", show=False),
         Binding("p", "copy_location", "Copy path", show=False),
         Binding("i", "overview", "Info", show=False),
@@ -115,10 +120,13 @@ class SpycApp(App):
     ]
 
     def __init__(self, project_root: Path, start: Location | None = None, store: StateStore | None = None,
-                 max_files: int = MAX_INDEXED_FILES) -> None:
+                 max_files: int = MAX_INDEXED_FILES, coverage_files: Sequence[Path] = ()) -> None:
         super().__init__()
         self.project_root = project_root
         self.store = store or StateStore()
+        self._coverage_files = tuple(coverage_files)
+        self._coverage: Coverage | None = None
+        self._coverage_shown = bool(self.store.get("coverage", True))
         self.history = JumpHistory()
         self.overview: Overview | None = None
         self.git = Git(project_root)
@@ -213,12 +221,52 @@ class SpycApp(App):
         worker = get_current_worker()
         self._symbols.update(paths, stop=lambda: worker.is_cancelled or generation != self._index_generation)
 
+    # The reports are those named on the command line, or else the ones the
+    # project has; reading them can take a moment, so it is done off the UI thread.
+    @work(thread=True, exclusive=True, group="coverage", exit_on_error=False)
+    def _load_coverage(self, generation: int, paths: tuple[str, ...]) -> None:
+        reports, errors = load_reports(self._coverage_files or find_reports(self.project_root))
+        coverage = Coverage.build(self.project_root, paths, reports)
+        self.call_from_thread(self._coverage_ready, generation, coverage, errors)
+
+    def _coverage_ready(self, generation: int, coverage: Coverage, errors: list[str]) -> None:
+        if generation != self._index_generation:
+            return
+        self._coverage = coverage if coverage.files else None
+        if self._coverage_files:
+            for error in errors:
+                self.notify(f"Coverage report skipped, {error}", severity="warning", markup=False)
+        self._apply_coverage()
+        self._refresh_status()
+
+    def _apply_coverage(self) -> None:
+        code = self._code
+        if code.document is None:
+            return
+        shown = self._coverage is not None and self._coverage_shown
+        code.set_coverage(self._coverage.lines_of(code.display_path) or {} if shown else None)
+
+    def _coverage_status(self, code: CodeView) -> str:
+        percent = self._coverage.file_percent(code.display_path) if self._coverage else None
+        if percent is None:
+            return ""
+        return coverage_status(percent, self._coverage.is_stale(code.display_path, code.document.mtime))
+
+    def action_toggle_coverage(self) -> None:
+        if self._coverage is None:
+            self.notify("No coverage report found; run the tests with coverage or start spyc with --coverage FILE")
+            return
+        self._coverage_shown = not self._coverage_shown
+        self.store.set("coverage", self._coverage_shown)
+        self._apply_coverage()
+
     def _index_ready(self, generation: int, index: FileIndex, model: TreeModel, overview: Overview,
                      matcher: PathMatcher) -> None:
         if generation != self._index_generation:
             return
         self.overview, self._matcher, self._paths = overview, matcher, index.paths
         self._index_symbols(generation, index.paths)
+        self._load_coverage(generation, index.paths)
         self._tree.load(model)
         self._overview_pane.show(overview)
         if index.truncated:
@@ -315,6 +363,7 @@ class SpycApp(App):
         self.store.add_recent_file(self.project_root, path)
         self._tree.reveal(path)
         code.focus()
+        self._apply_coverage()
         self._refresh_changes()
         self._refresh_blame()
         return True
@@ -338,8 +387,9 @@ class SpycApp(App):
         document = code.document
         if document is not None:
             language = document.language.name if document.language else None
+            extra = " · ".join(part for part in (code.match_status, self._coverage_status(code)) if part)
             self._status.show(code.display_path, language, code.cursor_row, code.cursor_column,
-                              len(document.lines), code.match_status)
+                              len(document.lines), extra)
 
     def action_find_file(self) -> None:
         if self._matcher is None:
@@ -557,6 +607,7 @@ class SpycApp(App):
         except OSError:
             return
         code.replace(document)
+        self._apply_coverage()
         self._refresh_git()
         self._refresh_blame()
         if self._rendered.display:

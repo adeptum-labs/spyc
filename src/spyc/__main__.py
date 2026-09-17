@@ -35,6 +35,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="spyc", description=DESCRIPTION)
     parser.add_argument("path", nargs="?", default=".", metavar="PATH[:LINE]",
                         help="file or directory to open, the current directory by default")
+    parser.add_argument("--coverage", action="append", default=[], metavar="FILE",
+                        help="coverage report to show (LCOV, Cobertura, JaCoCo or Go), may be given more than once; "
+                             "the reports of the project are looked for when there is none")
     parser.add_argument("--version", action="version", version=f"spyc {importlib.metadata.version('spyc')}")
     return parser
 
@@ -46,6 +49,11 @@ def main(argv: list[str] | None = None) -> int:
     if not target.exists():
         print(f"spyc: {arguments.path}: no such file or directory", file=sys.stderr)
         return 2
+    coverage_files = [Path(name).expanduser().resolve() for name in arguments.coverage]
+    missing = next((name for name, path in zip(arguments.coverage, coverage_files) if not path.is_file()), None)
+    if missing is not None:
+        print(f"spyc: --coverage {missing}: no such file", file=sys.stderr)
+        return 2
     root = find_root(target)
     try:
         relative = target.relative_to(root).as_posix()
@@ -53,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
         root = target if target.is_dir() else target.parent
         relative = target.relative_to(root).as_posix()
     configure_logging()
-    SpycApp(root, None if relative == "." else Location(relative, location.line)).run()
+    SpycApp(root, None if relative == "." else Location(relative, location.line), coverage_files=coverage_files).run()
     return 0
 
 

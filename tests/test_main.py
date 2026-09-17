@@ -29,9 +29,11 @@ from spyc.location import Location
 
 class RecordingApp:
     created = []
+    coverage_files = []
 
-    def __init__(self, root, start=None):
+    def __init__(self, root, start=None, coverage_files=()):
         RecordingApp.created.append((root, start))
+        RecordingApp.coverage_files = list(coverage_files)
 
     def run(self):
         pass
@@ -75,6 +77,19 @@ def test_a_project_without_git_uses_its_build_marker(tmp_path, recorded):
 def test_a_missing_path_is_an_error_and_starts_nothing(tmp_path, recorded, capsys):
     assert entry.main([str(tmp_path / "nope")]) == 2
     assert "no such file or directory" in capsys.readouterr().err and recorded == []
+
+
+def test_coverage_reports_can_be_named_and_are_passed_on_as_absolute_paths(git_repo, recorded, monkeypatch):
+    (git_repo / "one.info").write_text("x")
+    (git_repo / "two.xml").write_text("x")
+    monkeypatch.chdir(git_repo)
+    assert entry.main([str(git_repo), "--coverage", "one.info", "--coverage", str(git_repo / "two.xml")]) == 0
+    assert RecordingApp.coverage_files == [(git_repo / "one.info").resolve(), (git_repo / "two.xml").resolve()]
+
+
+def test_a_coverage_report_that_is_not_a_file_is_an_error_and_starts_nothing(git_repo, recorded, capsys):
+    assert entry.main([str(git_repo), "--coverage", str(git_repo / "nope.info")]) == 2
+    assert "--coverage" in capsys.readouterr().err and recorded == []
 
 
 def test_version_flag_prints_the_package_version(capsys):
