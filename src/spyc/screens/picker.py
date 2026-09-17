@@ -18,12 +18,13 @@
 # Contact: info@adeptum.se
 
 
-from textual import events
+from rich.text import Text
+from textual import events, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Input, OptionList
+from textual.widgets import Input, OptionList, Static
 from textual.widgets.option_list import Option
 
 from spyc.picking import Choice, Item, PickerSource
@@ -38,6 +39,7 @@ class Picker(ModalScreen[Choice | None]):
     Picker { align: center middle; }
     Picker > Vertical { width: 92%; height: 85%; border: round $accent; background: $surface; }
     Picker Input { border: none; border-bottom: solid $primary; }
+    Picker #picker-status { height: 1; padding: 0 1; color: $text-muted; }
     Picker Horizontal { height: 1fr; }
     Picker OptionList { width: 45%; border: none; background: transparent; text-wrap: nowrap; text-overflow: ellipsis; }
     Picker CodeView { width: 55%; border-left: solid $primary; }
@@ -50,6 +52,8 @@ class Picker(ModalScreen[Choice | None]):
         Binding("up", "move(-1)", show=False),
         Binding("pagedown", "move(10)", show=False),
         Binding("pageup", "move(-10)", show=False),
+        Binding("alt+r,ctrl+r", "toggle_regex", show=False),
+        Binding("alt+w", "toggle_word", show=False),
     ]
 
     def __init__(self, source: PickerSource) -> None:
@@ -57,10 +61,13 @@ class Picker(ModalScreen[Choice | None]):
         self._source = source
         self._items: list[Item] = []
         self._preview_timer = None
+        self._search_timer = None
+        self._generation = 0
 
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Input(placeholder=self._source.placeholder)
+            yield Static(id="picker-status")
             with Horizontal():
                 yield OptionList()
                 yield CodeView()
@@ -68,20 +75,64 @@ class Picker(ModalScreen[Choice | None]):
     def on_mount(self) -> None:
         self.query_one(CodeView).can_focus = False
         self.set_class(self.app.size.width < NARROW_WIDTH, "-narrow")
-        self._search("")
+        self._search_now("")
 
     def on_resize(self, event: events.Resize) -> None:
         self.set_class(event.size.width < NARROW_WIDTH, "-narrow")
 
+    # A source that searches many files says so with `threaded`, and is then
+    # asked from a worker thread, once typing has paused for `debounce`
+    # seconds; an answer that arrives after a newer question is dropped.
     def on_input_changed(self, event: Input.Changed) -> None:
-        self._search(event.value)
+        if self._search_timer is not None:
+            self._search_timer.stop()
+        pause = getattr(self._source, "debounce", 0.0)
+        if pause:
+            self._search_timer = self.set_timer(pause, lambda: self._search_now(event.value))
+        else:
+            self._search_now(event.value)
 
-    def _search(self, query: str) -> None:
-        self._items = self._source.search(query)
+    def _search_now(self, query: str) -> None:
+        if getattr(self._source, "threaded", False):
+            self._generation += 1
+            self._ask(self._generation, query)
+        else:
+            self._show(self._source.search(query))
+
+    @work(thread=True, group="picker-search", exit_on_error=False)
+    def _ask(self, generation: int, query: str) -> None:
+        self.app.call_from_thread(self._answered, generation, self._source.search(query))
+
+    def _answered(self, generation: int, items: list[Item]) -> None:
+        if generation == self._generation:
+            self._show(items)
+
+    def _show(self, items: list[Item]) -> None:
+        self._items = items
         options = self.query_one(OptionList)
         options.clear_options()
-        options.add_options([Option(item.label) for item in self._items])
-        options.highlighted = 0 if self._items else None
+        options.add_options([Option(item.label) for item in items])
+        options.highlighted = 0 if items else None
+        self._show_status()
+
+    def _show_status(self) -> None:
+        mode, summary = getattr(self._source, "mode_text", None), getattr(self._source, "summary", None)
+        text = "  ".join(part for part in (mode and mode(), summary and summary()) if part)
+        status = self.query_one("#picker-status", Static)
+        status.display = bool(text)
+        status.update(Text(text))
+
+    def action_toggle_regex(self) -> None:
+        self._toggle("toggle_regex")
+
+    def action_toggle_word(self) -> None:
+        self._toggle("toggle_word")
+
+    def _toggle(self, name: str) -> None:
+        toggle = getattr(self._source, name, None)
+        if toggle is not None:
+            toggle()
+            self._search_now(self.query_one(Input).value)
 
     # The preview is debounced so holding Down through a long list loads one
     # file, not fifty.
