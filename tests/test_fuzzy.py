@@ -20,7 +20,7 @@
 
 import time
 
-from spyc.fuzzy import PathMatcher
+from spyc.fuzzy import PathMatcher, rank
 
 PATHS = ["src/app.py", "src/application/main.py", "README.md", "docs/app-guide.md",
          "tests/test_app.py", "src/util/strings.py"]
@@ -94,3 +94,17 @@ def test_a_hundred_thousand_paths_are_searched_in_reasonable_time():
     matcher.search("file9")
     matcher.search("file99")
     assert time.perf_counter() - started < 2.0
+
+
+def test_names_are_ranked_with_every_duplicate_kept_apart():
+    names = ["render", "prerender", "Render", "reader", "render"]
+    assert [index for index, _ in rank(names, "render")] == [0, 2, 4, 1]
+
+
+def test_ranking_marks_the_matched_characters_and_keeps_the_order_without_a_query():
+    assert rank(["alpha", "beta"], "bt") == [(1, (0, 2))]
+    assert rank(["alpha", "beta"], "") == [(0, ()), (1, ())]
+
+
+def test_ranking_stops_at_the_limit():
+    assert len(rank([f"name{number}" for number in range(50)], "name", limit=5)) == 5

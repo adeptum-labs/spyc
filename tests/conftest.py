@@ -28,6 +28,7 @@ from repos import PROJECT_FILES, make_repo, write_files
 @pytest.fixture(autouse=True)
 def isolated_state(monkeypatch, tmp_path_factory):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path_factory.mktemp("state")))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path_factory.mktemp("cache")))
     # The developer's own git configuration must not change what the tests see.
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
