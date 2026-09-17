@@ -20,7 +20,7 @@
 
 import time
 
-from spyc.fuzzy import PathMatcher, rank
+from spyc.fuzzy import PathMatcher, rank, rank_counted
 
 PATHS = ["src/app.py", "src/application/main.py", "README.md", "docs/app-guide.md",
          "tests/test_app.py", "src/util/strings.py"]
@@ -108,3 +108,10 @@ def test_ranking_marks_the_matched_characters_and_keeps_the_order_without_a_quer
 
 def test_ranking_stops_at_the_limit():
     assert len(rank([f"name{number}" for number in range(50)], "name", limit=5)) == 5
+
+
+def test_a_ranking_can_say_how_many_matched_beyond_the_limit():
+    names = [f"name{number}" for number in range(50)] + ["other"]
+    shown, matched = rank_counted(names, "name", limit=5)
+    assert (len(shown), matched) == (5, 50)
+    assert rank_counted(names, "", limit=5)[1] == 51

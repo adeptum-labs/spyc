@@ -18,6 +18,7 @@
 # Contact: info@adeptum.se
 
 
+import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -26,21 +27,23 @@ from rich.text import Text
 from spyc.document import Document, load_document
 from spyc.picking import Item
 from spyc.printable import printable
-from spyc.search import MAX_HITS, Hit, SearchResult, search_text
+from spyc.search import MAX_HITS, Cancellation, Hit, SearchResult, search_text
 
 
 # Searching many files takes a moment, so the picker asks this source from a
-# worker thread and only once typing has paused.
+# worker thread, one search at a time, and only once typing has paused. A
+# search that is no longer wanted is cancelled.
 class SearchSource:
-    placeholder = "Search the text of the project  (alt+r: pattern, alt+w: whole word)"
+    placeholder = "Search the text of the project  (F2: pattern, F3: whole word)"
     threaded = True
     debounce = 0.25
 
     def __init__(self, root: Path, paths: Callable[[], Sequence[str]], whole_word: bool = False) -> None:
         self._root, self._paths = root, paths
         self.regex, self.whole_word = False, whole_word
-        self._query = ""
-        self._result = SearchResult()
+        self._last = ("", SearchResult())
+        self._lock = threading.Lock()
+        self._cancellation = Cancellation()
 
     def toggle_regex(self) -> None:
         self.regex = not self.regex
@@ -52,20 +55,28 @@ class SearchSource:
         return ("regex" if self.regex else "literal") + (" · whole word" if self.whole_word else "")
 
     def summary(self) -> str:
-        if self._result.error:
-            return f"Bad pattern: {self._result.error}"
-        if not self._query:
+        query, result = self._last
+        if result.error:
+            return result.error
+        if not query:
             return ""
-        count = len(self._result.hits)
-        if self._result.truncated:
+        count = len(result.hits)
+        if result.truncated:
             return f"{count}+ hits, the list is cut"
-        return f"{count} hits" if count else "no hits"
+        return {0: "no hits", 1: "1 hit"}.get(count, f"{count} hits")
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._cancellation.cancel()
 
     def search(self, query: str) -> list[Item]:
-        self._query = query
-        self._result = search_text(self._root, self._paths(), query, regex=self.regex, whole_word=self.whole_word,
-                                   limit=MAX_HITS)
-        return [Item(hit.path, self._label(hit, query), hit.line) for hit in self._result.hits]
+        cancellation = Cancellation()
+        with self._lock:
+            self._cancellation = cancellation
+        result = search_text(self._root, self._paths(), query, regex=self.regex, whole_word=self.whole_word,
+                             limit=MAX_HITS, cancellation=cancellation)
+        self._last = (query, result)
+        return [Item(hit.path, self._label(hit, query), hit.line, hit.column) for hit in result.hits]
 
     def preview(self, item: Item) -> Document | None:
         try:

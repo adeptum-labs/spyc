@@ -22,6 +22,7 @@ import pytest
 
 from repos import write_files
 from spyc.file_index import build_index
+from spyc.search import SearchResult
 from spyc.search_picker import SearchSource
 
 
@@ -94,3 +95,28 @@ def test_a_search_can_start_in_whole_word_mode(tmp_path):
     picked = SearchSource(tmp_path, lambda: paths, whole_word=True)
     assert picked.mode_text() == "literal · whole word"
     assert [item.line for item in picked.search("foo")] == [1]
+
+
+def test_a_single_hit_is_not_plural(source):
+    assert len(source.search("def foo")) == 1
+    assert source.summary() == "1 hit"
+
+
+def test_without_ripgrep_the_pattern_mode_explains_why_it_is_off(source, monkeypatch):
+    monkeypatch.setattr("spyc.search.shutil.which", lambda name: None)
+    source.toggle_regex()
+    assert source.search("foo") == []
+    assert source.summary() == "Pattern search needs ripgrep"
+
+
+def test_cancelling_stops_the_search_that_is_running(source, monkeypatch):
+    cancellations = []
+
+    def fake_search(*arguments, cancellation, **options):
+        cancellations.append(cancellation)
+        return SearchResult()
+
+    monkeypatch.setattr("spyc.search_picker.search_text", fake_search)
+    source.search("a")
+    source.cancel()
+    assert [cancellation.cancelled for cancellation in cancellations] == [True]

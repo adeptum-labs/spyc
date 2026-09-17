@@ -18,12 +18,15 @@
 # Contact: info@adeptum.se
 
 
-from textual.widgets import OptionList
+import time
+
+from textual.widgets import Footer, OptionList
 
 from repos import write_files
 from spyc.app import SpycApp
 from spyc.screens.picker import Picker
 from spyc.state import StateStore
+from spyc.symbol_index import SymbolIndex
 from spyc.widgets.code_view import CodeView
 from waiting import until
 
@@ -47,10 +50,11 @@ async def test_s_searches_the_text_of_the_project_and_enter_opens_the_hit(projec
         await until(pilot, lambda: isinstance(app.screen, Picker))
         await pilot.press(*"return")
         await until(pilot, lambda: app.screen.query_one(OptionList).option_count == 1)
-        assert app.screen.query_one("#picker-status").render().plain == "literal  1 hits"
+        assert app.screen.query_one("#picker-status").render().plain == "literal  1 hit"
         await pilot.press("enter")
         await until(pilot, lambda: app.query_one(CodeView).display_path == "src/app.py")
         await until(pilot, lambda: app.query_one(CodeView).cursor_row == 1)
+        assert app.query_one(CodeView).cursor_column == 4
 
 
 async def test_s_before_the_files_are_known_says_so(project, tmp_path, monkeypatch):
@@ -96,6 +100,7 @@ async def test_o_lists_the_definitions_of_the_open_file_and_enter_jumps_to_one(t
         await pilot.press(*"main", "enter")
         await until(pilot, lambda: not isinstance(app.screen, Picker))
         await until(pilot, lambda: app.query_one(CodeView).cursor_row == 4)
+        assert app.query_one(CodeView).cursor_column == 4
 
 
 async def test_o_explains_itself_without_a_file_or_an_outline(tmp_path, monkeypatch):
@@ -136,7 +141,7 @@ async def test_d_jumps_to_the_only_definition_of_the_name_under_the_cursor(tmp_p
         await pilot.pause()
         await pilot.press("d")
         await until(pilot, lambda: app.query_one(CodeView).display_path == "src/only.py")
-        assert app.query_one(CodeView).cursor_row == 0
+        assert (app.query_one(CodeView).cursor_row, app.query_one(CodeView).cursor_column) == (0, 4)
         await pilot.press("left_square_bracket")
         await until(pilot, lambda: app.query_one(CodeView).display_path == "src/user.py")
 
@@ -195,3 +200,89 @@ async def test_d_needs_the_cursor_on_a_name(tmp_path, monkeypatch):
         await pilot.press("d")
         await pilot.pause()
         assert notes == ["Put the cursor on a name first"]
+
+
+async def test_d_offers_a_lone_definition_in_another_language_instead_of_jumping_to_it(tmp_path):
+    write_files(tmp_path / "proj", {"a.py": "helper()\n", "web/x.js": "function helper() {}\n"})
+    app = make_app(tmp_path / "proj", tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await indexed(pilot)
+        app.open_file("a.py")
+        await pilot.pause()
+        await pilot.press("d")
+        await until(pilot, lambda: isinstance(app.screen, Picker) and len(picker_rows(app)) == 1)
+        assert app.query_one(CodeView).display_path == "a.py"
+
+
+async def test_d_says_when_the_index_is_still_being_built(tmp_path, monkeypatch):
+    write_files(tmp_path / "proj", SYMBOL_FILES)
+    notes = []
+    monkeypatch.setattr(SpycApp, "notify", lambda self, message, **options: notes.append(message))
+    app = make_app(tmp_path / "proj", tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await indexed(pilot)
+        app.open_file("src/lost.py")
+        await pilot.pause()
+        app._symbols.done, app._symbols.total = 2, 5
+        await pilot.press("d")
+        await pilot.pause()
+        assert notes == ["No definition of mystery found yet, the index is still being built; showing where it is used"]
+
+
+async def test_the_keys_that_need_the_code_say_so_while_the_rendered_view_is_showing(tmp_path, monkeypatch):
+    write_files(tmp_path / "proj", {"README.md": "# Title\n"})
+    notes = []
+    monkeypatch.setattr(SpycApp, "notify", lambda self, message, **options: notes.append(message))
+    app = make_app(tmp_path / "proj", tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("README.md")
+        await pilot.pause()
+        await pilot.press("r")
+        await pilot.pause()
+        await pilot.press("o", "d", "slash", "colon")
+        await pilot.pause()
+    assert notes == ["Press r to leave the rendered view first"] * 4
+
+
+async def test_the_indexing_of_symbols_stops_when_the_app_is_left(project, tmp_path, monkeypatch):
+    outcome = []
+
+    def endless(self, paths, stop=lambda: False):
+        deadline = time.monotonic() + 3
+        while not stop() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        outcome.append(stop())
+
+    monkeypatch.setattr(SymbolIndex, "update", endless)
+    async with make_app(project, tmp_path).run_test(size=SIZE) as pilot:
+        await pilot.pause(0.3)
+        assert outcome == []
+    deadline = time.monotonic() + 5
+    while not outcome and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert outcome == [True]
+
+
+async def test_help_and_quit_are_the_first_keys_of_the_footer_and_all_fit_beside_the_palette_on_a_narrow_terminal(project, tmp_path):
+    async with make_app(project, tmp_path).run_test(size=(80, 24)) as pilot:
+        await ready(pilot)
+        footer = pilot.app.query_one(Footer)
+        keys = list(footer.query("FooterKey"))
+        assert [key.key for key in keys[:2]] == ["question_mark", "q"]
+        palette = next(key for key in keys if key.key == "ctrl+p")
+        assert all(key.region.right <= palette.region.x for key in keys if key is not palette)
+
+
+async def test_o_does_not_parse_a_file_that_is_shown_without_colors(tmp_path, monkeypatch):
+    write_files(tmp_path / "proj", {"big.py": "def f(): pass\n" + "x = '" + "a" * 11_000 + "'\n"})
+    notes = []
+    monkeypatch.setattr(SpycApp, "notify", lambda self, message, **options: notes.append(message))
+    app = make_app(tmp_path / "proj", tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("big.py")
+        await pilot.pause()
+        await pilot.press("o")
+        await pilot.pause()
+    assert notes == ["No outline for this file"]

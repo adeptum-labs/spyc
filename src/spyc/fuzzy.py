@@ -93,12 +93,18 @@ def _positions(lower: str, terms: Sequence[str]) -> tuple[int, ...]:
 # Names, unlike paths, may repeat, so what comes back are indices into the
 # list, best first, each with the characters that matched.
 def rank(names: Sequence[str], query: str, limit: int = 100) -> list[tuple[int, tuple[int, ...]]]:
+    return rank_counted(names, query, limit)[0]
+
+
+# The same, with the number of names that matched, however many the limit cut off.
+def rank_counted(names: Sequence[str], query: str, limit: int = 100) -> tuple[list[tuple[int, tuple[int, ...]]], int]:
     terms = query.lower().split()
     if not terms:
-        return [(index, ()) for index in range(min(limit, len(names)))]
+        return [(index, ()) for index in range(min(limit, len(names)))], len(names)
     scored = [(-total, len(name), index) for index, name in enumerate(names)
               if (total := _score(name.lower(), terms)) is not None]
-    return [(index, _positions(names[index].lower(), terms)) for _, _, index in heapq.nsmallest(limit, scored)]
+    best = [(index, _positions(names[index].lower(), terms)) for _, _, index in heapq.nsmallest(limit, scored)]
+    return best, len(scored)
 
 
 class PathMatcher:

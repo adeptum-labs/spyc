@@ -7,7 +7,8 @@ files as a tree, colors the code, shows the history from git, and is meant to be
 
 - Python 3.11 or later
 - `git` on the path (lists the files of a project and gives the history, changes and blame)
-- `rg` (ripgrep) is optional: it makes the search of the whole project fast, and without it the files are read in Python
+- `rg` (ripgrep) is optional: it makes the search of the whole project fast and is needed for pattern search; without
+  it the files are read in Python and the search is literal
 
 ## Usage
 
@@ -27,7 +28,7 @@ the build systems and the key files, such as the README, the build files, the CI
 | Keys | What they do |
 |---|---|
 | `f` | Find a file by name; `name:line` jumps to a line |
-| `s` | Search the text of the project (ripgrep when installed); `alt+r` for a pattern, `alt+w` for whole words |
+| `s` | Search the text of the project (ripgrep when installed); `alt+r` or `F2` for a pattern, `alt+w` or `F3` for whole words |
 | `o` | Outline: the definitions of the open file |
 | `t` | Find a definition anywhere in the project |
 | `d` | Go to the definition of the name under the cursor, the nearest first; `[` comes back |
@@ -55,14 +56,16 @@ the build systems and the key files, such as the README, the build files, the CI
 | `Enter` | Open the file in the tree; `←` and `→` close and open directories |
 | `ctrl+p` | Command palette, where the color theme can be changed |
 
+Outline and go-to-definition know the definitions of Python, Java, Kotlin, Go, Rust, JavaScript, TypeScript, C, C++,
+Bash and Markdown headings.
+
 In a git repository the tree marks changed files and their directories, the code view marks added, changed and
 deleted lines in the margin, and the overview and the title tell the branch, the number of changes and the last
 commit. The mouse works too: click to place the cursor, scroll to move.
 
 ## Colors
 
-Outline and go-to-definition know the definitions of Python, Java, Kotlin, Go, Rust, JavaScript, TypeScript, C, C++,
-Bash and Markdown headings. The code is colored with tree-sitter grammars for Bash, C, C++, CSS, Go, HTML, Java, JavaScript, JSON, Kotlin,
+The code is colored with tree-sitter grammars for Bash, C, C++, CSS, Go, HTML, Java, JavaScript, JSON, Kotlin,
 Python, Rust, SCSS, SQL, TOML, TSX, TypeScript, XML and YAML. Other languages are colored with Pygments. The theme
 follows the one chosen in the command palette and is remembered.
 

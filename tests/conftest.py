@@ -32,6 +32,7 @@ def isolated_state(monkeypatch, tmp_path_factory):
     # The developer's own git configuration must not change what the tests see.
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.delenv("RIPGREP_CONFIG_PATH", raising=False)
 
 
 @pytest.fixture

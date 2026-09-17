@@ -18,7 +18,6 @@
 # Contact: info@adeptum.se
 
 
-import re
 from dataclasses import dataclass
 
 from tree_sitter import Parser, QueryCursor
@@ -28,8 +27,10 @@ from spyc.syntax.grammars import load_tags
 from spyc.syntax.tree_sitter_highlighter import compile_query
 
 DEFINITION_PREFIX = "definition."
-HEADING = re.compile(r"^(?P<marks>#{1,6})[ \t]+(?P<title>.*?)(?:[ \t]+#+)?[ \t]*$")
-FENCE = re.compile(r"^\s{0,3}(```|~~~)")
+MAX_INDENT = 3
+MAX_HEADING_LEVEL = 6
+FENCE_CHARACTERS = ("`", "~")
+FENCE_LENGTH = 3
 
 
 # A definition: line is 1-based and column the 0-based character where the name starts.
@@ -55,13 +56,16 @@ def _definitions(text: str, ts_language, query_source: str) -> list[Symbol]:
     lines = data.split(b"\n")
     tree = Parser(ts_language).parse(data)
     kinds: dict[tuple[str, int, int], str] = {}
+    ascii_rows: dict[int, bool] = {}
     for _, captures in QueryCursor(compile_query(ts_language, query_source)).matches(tree.root_node):
         kind = next((name[len(DEFINITION_PREFIX):] for name in captures if name.startswith(DEFINITION_PREFIX)), None)
         if kind is None or "name" not in captures:
             continue
         node = captures["name"][0]
         row, byte_column = node.start_point
-        column = len(lines[row][:byte_column].decode("utf-8", errors="replace"))
+        if row not in ascii_rows:
+            ascii_rows[row] = lines[row].isascii()
+        column = byte_column if ascii_rows[row] else len(lines[row][:byte_column].decode("utf-8", errors="replace"))
         key = (node.text.decode("utf-8", errors="replace"), row + 1, column)
         # Some grammars match a method both as a method and as a function.
         if key not in kinds or (kinds[key] == "function" and kind != "function"):
@@ -73,10 +77,39 @@ def _definitions(text: str, ts_language, query_source: str) -> list[Symbol]:
 # Markdown has no grammar here; its headings, outside fenced code, are its outline.
 def _headings(text: str) -> list[Symbol]:
     symbols: list[Symbol] = []
-    fenced = False
+    fence: tuple[str, int] | None = None
     for number, line in enumerate(text.split("\n"), 1):
-        if FENCE.match(line):
-            fenced = not fenced
-        elif not fenced and (heading := HEADING.match(line)):
-            symbols.append(Symbol(heading["title"], f"h{len(heading['marks'])}", number, heading.start("title")))
+        marker = _fence_of(line)
+        if fence is not None:
+            if marker and marker[0] == fence[0] and marker[1] >= fence[1] and line.strip() == marker[0] * marker[1]:
+                fence = None
+        elif marker:
+            fence = marker
+        elif heading := _heading_of(line, number):
+            symbols.append(heading)
     return symbols
+
+
+# The character and length of the run that opens or closes a fenced block of code.
+def _fence_of(line: str) -> tuple[str, int] | None:
+    indent = len(line) - len(line.lstrip(" "))
+    if indent > MAX_INDENT or line[indent:indent + 1] not in FENCE_CHARACTERS:
+        return None
+    run = len(line) - indent - len(line[indent:].lstrip(line[indent]))
+    return (line[indent], run) if run >= FENCE_LENGTH else None
+
+
+# Read by hand: a pattern for this backtracks quadratically over a long run of blanks.
+def _heading_of(line: str, number: int) -> Symbol | None:
+    indent = len(line) - len(line.lstrip(" "))
+    marks = len(line) - indent - len(line[indent:].lstrip("#"))
+    rest = line[indent + marks:]
+    if indent > MAX_INDENT or not 1 <= marks <= MAX_HEADING_LEVEL or rest[:1] not in ("", " ", "\t"):
+        return None
+    title = rest.strip(" \t")
+    unclosed = title.rstrip("#")
+    if unclosed != title and unclosed[-1:] in ("", " ", "\t"):
+        title = unclosed.rstrip(" \t")
+    if not title:
+        return None
+    return Symbol(title, f"h{marks}", number, indent + marks + len(rest) - len(rest.lstrip(" \t")))

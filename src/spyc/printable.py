@@ -22,13 +22,15 @@ TAB = 9
 NEWLINE = 10
 DELETE = 0x7F
 C1_CONTROLS = range(0x80, 0xA0)
+SURROGATES = range(0xD800, 0xE000)
 
 # Text from files goes to the terminal as it is, so a control character in it is
 # a command to the terminal (clear the screen, set the clipboard). Each one is
 # shown as its symbol from the Control Pictures block instead, one for one, so
-# columns and offsets do not shift.
+# columns and offsets do not shift. A file name that is not valid UTF-8 reaches
+# Python as lone surrogates, which cannot be written to a terminal at all.
 _CONTROLS = {code: chr(0x2400 + code) for code in range(32) if code != TAB} | {DELETE: "␡"}
-_CONTROLS |= {code: "�" for code in C1_CONTROLS}
+_CONTROLS |= {code: "�" for code in (*C1_CONTROLS, *SURROGATES)}
 _KEEPING_NEWLINES = {code: symbol for code, symbol in _CONTROLS.items() if code != NEWLINE}
 
 

@@ -24,32 +24,47 @@ from pathlib import Path
 from rich.text import Text
 
 from spyc.document import Document, load_document
-from spyc.fuzzy import rank
+from spyc.fuzzy import rank_counted
 from spyc.picking import Item
 from spyc.printable import printable
 from spyc.symbol_index import Located
 
 KIND_WIDTH = 10
 LIST_LIMIT = 200
+PAUSE = 0.15
 
 
 # Definitions to pick from: those of one file for the outline, of the whole
 # project, or the candidates for a name. `entries` is asked on every search,
-# because the index may still be filling.
+# because the index may still be filling. A list that is cut to `limit` says
+# how many there are, and is searched in the background, since it may be huge.
+# Where the path is shown it is searched too, so "parser src/api" narrows the
+# definitions by their directory.
 class SymbolSource:
     def __init__(self, root: Path | None, entries: Callable[[], Sequence[Located]], placeholder: str,
-                 show_path: bool, status: Callable[[], str] = lambda: "") -> None:
+                 show_path: bool, status: Callable[[], str] = lambda: "", limit: int | None = None) -> None:
         self._root, self._entries, self.placeholder = root, entries, placeholder
-        self._show_path, self._status = show_path, status
+        self._show_path, self._status, self._limit = show_path, status, limit
+        self.threaded = limit is not None
+        self.debounce = PAUSE if self.threaded else 0.0
+        self._counts = (0, 0)
 
     def summary(self) -> str:
-        return self._status()
+        shown, total = self._counts
+        cut = f"{shown:,} of {total:,}" if shown < total else ""
+        return "  ".join(part for part in (self._status(), cut) if part)
 
     def search(self, query: str) -> list[Item]:
         entries = list(self._entries())
-        ranked = rank([entry.symbol.name for entry in entries], query, LIST_LIMIT)
-        return [Item(entries[index].path, self._label(entries[index], marked), entries[index].symbol.line)
+        ranked, matched = rank_counted([self._searched_text(entry) for entry in entries], query,
+                                       self._limit or len(entries))
+        self._counts = (len(ranked), matched)
+        return [Item(entries[index].path, self._label(entries[index], marked), entries[index].symbol.line,
+                     entries[index].symbol.column)
                 for index, marked in ranked]
+
+    def _searched_text(self, entry: Located) -> str:
+        return f"{entry.symbol.name}  {entry.path}" if self._show_path else entry.symbol.name
 
     def preview(self, item: Item) -> Document | None:
         try:

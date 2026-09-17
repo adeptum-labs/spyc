@@ -18,6 +18,8 @@
 # Contact: info@adeptum.se
 
 
+import time
+
 import pytest
 
 from spyc.languages import LANGUAGES, LANGUAGES_BY_ID
@@ -82,3 +84,41 @@ def test_languages_without_tags_and_unknown_files_have_no_symbols():
 
 def test_broken_source_still_gives_the_definitions_that_parse():
     assert ("g", 3) in found("python", "def (:\n\ndef g(): pass\n")
+
+
+def headings(text):
+    return [(symbol.name, symbol.kind, symbol.line, symbol.column) for symbol in symbols_of(text, LANGUAGES_BY_ID["markdown"])]
+
+
+def test_a_longer_fence_is_closed_only_by_a_fence_at_least_as_long_and_of_its_own_kind():
+    text = "````\n```\n# inside\n```\n~~~~\n# still inside\n````\n# Out\n"
+    assert headings(text) == [("Out", "h1", 8, 2)]
+
+
+def test_a_fence_holding_a_heading_like_line_is_not_closed_by_a_fence_with_text_after_it():
+    assert headings("```\n```python\n# inside\n```\n# Out\n") == [("Out", "h1", 5, 2)]
+
+
+def test_a_heading_may_be_indented_by_up_to_three_spaces():
+    assert headings("   # Three\n    # Four\n") == [("Three", "h1", 1, 5)]
+
+
+def test_an_empty_heading_and_a_hashtag_are_not_outline_entries():
+    assert headings("#\n# \n## ##\n#hashtag\n") == []
+
+
+def test_the_closing_hashes_of_a_heading_are_not_part_of_its_title():
+    assert headings("## Title ##  \n# C#\n# a #b\n") == [("Title", "h2", 1, 3), ("C#", "h1", 2, 2), ("a #b", "h1", 3, 2)]
+
+
+def test_a_heading_line_of_many_blanks_is_read_in_linear_time():
+    started = time.perf_counter()
+    headings("# a" + " " * 20_000 + "x\n")
+    assert time.perf_counter() - started < 1
+
+
+def test_a_very_long_line_with_many_definitions_is_read_quickly():
+    text = "".join(f"function f{index}(){{}}" for index in range(60_000))
+    started = time.perf_counter()
+    assert len(symbols_of(text, LANGUAGES_BY_ID["javascript"])) == 60_000
+    assert time.perf_counter() - started < 3

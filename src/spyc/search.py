@@ -18,20 +18,25 @@
 # Contact: info@adeptum.se
 
 
+import base64
 import json
+import os
 import re
 import shutil
 import subprocess
-from collections.abc import Sequence
+import threading
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from spyc.file_index import SKIPPED_DIRECTORIES
+from spyc.fileio import read_limited
 
 MAX_HITS = 2000
 MAX_LINE = 500
 MAX_FILE_BYTES = 2 * 1024 * 1024
 BINARY_PROBE = 8192
+NEEDS_RIPGREP = "Pattern search needs ripgrep"
 
 
 @dataclass(frozen=True)
@@ -49,25 +54,57 @@ class SearchResult:
     error: str | None = None
 
 
+# Lets a newer search stop an older one, also while ripgrep is busy and silent.
+class Cancellation:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._cancelled = False
+        self._kill: Callable[[], None] | None = None
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancelled
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._cancelled = True
+            kill = self._kill
+        if kill is not None:
+            kill()
+
+    def on_cancel(self, kill: Callable[[], None]) -> None:
+        with self._lock:
+            self._kill = kill
+            cancelled = self._cancelled
+        if cancelled:
+            kill()
+
+
 # The query is literal and case is ignored unless it holds a capital letter,
 # which is what ripgrep's smart case does too. ripgrep does the work when it is
-# installed; without it the files of the project index are read here.
+# installed; without it the files of the project index are read here, and a
+# pattern is refused because Python's re cannot be interrupted and one bad
+# pattern would freeze the program.
 def search_text(root: Path, paths: Sequence[str], query: str, *, regex: bool = False, whole_word: bool = False,
-                limit: int = MAX_HITS, ripgrep: bool | None = None) -> SearchResult:
-    if not query:
+                limit: int = MAX_HITS, ripgrep: bool | None = None,
+                cancellation: Cancellation | None = None) -> SearchResult:
+    cancellation = cancellation or Cancellation()
+    if not query or "\0" in query or cancellation.cancelled:
         return SearchResult()
-    use_ripgrep = shutil.which("rg") is not None if ripgrep is None else ripgrep
-    if use_ripgrep:
-        return _ripgrep(root, query, regex, whole_word, limit)
-    return _scan(root, paths, query, regex, whole_word, limit)
+    if shutil.which("rg") is not None if ripgrep is None else ripgrep:
+        return _ripgrep(root, query, regex, whole_word, limit, cancellation)
+    if regex:
+        return SearchResult(error=NEEDS_RIPGREP)
+    return _scan(root, paths, query, whole_word, limit, cancellation)
 
 
 def _short(text: str) -> str:
     return text.rstrip("\r\n")[:MAX_LINE]
 
 
-def _ripgrep(root: Path, query: str, regex: bool, whole_word: bool, limit: int) -> SearchResult:
-    command = ["rg", "--json", "--no-messages", "--smart-case", "--sort", "path", "--hidden", "--glob", "!.git"]
+def _ripgrep(root: Path, query: str, regex: bool, whole_word: bool, limit: int,
+             cancellation: Cancellation) -> SearchResult:
+    command = ["rg", "--json", "--no-config", "--no-messages", "--smart-case", "--hidden", "--glob", "!.git"]
     if not regex:
         command.append("--fixed-strings")
     if whole_word:
@@ -79,7 +116,8 @@ def _ripgrep(root: Path, query: str, regex: bool, whole_word: bool, limit: int) 
     try:
         process = subprocess.Popen(command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError as error:
-        return SearchResult(error=str(error))
+        return SearchResult(error=f"Search failed: {error}")
+    cancellation.on_cancel(process.kill)
     for raw in process.stdout:
         hit = _hit_of(raw)
         if hit is None:
@@ -92,9 +130,18 @@ def _ripgrep(root: Path, query: str, regex: bool, whole_word: bool, limit: int) 
     error = process.stderr.read().decode("utf-8", errors="replace").strip()
     process.stdout.close()
     process.stderr.close()
-    if process.wait() == 2 and not result.hits and error:
-        result.error = error.splitlines()[0]
+    status = process.wait()
+    if cancellation.cancelled:
+        return SearchResult()
+    if status == 2 and not result.hits and error:
+        result.error = f"{'Bad pattern' if regex else 'Search failed'}: {error.splitlines()[0]}"
+    result.hits.sort(key=lambda hit: (hit.path, hit.line))
     return result
+
+
+# ripgrep sends what is not valid UTF-8 as base64 "bytes" instead of "text".
+def _raw(payload: dict) -> bytes:
+    return base64.b64decode(payload["bytes"]) if "bytes" in payload else payload["text"].encode("utf-8")
 
 
 def _hit_of(raw: bytes) -> Hit | None:
@@ -105,22 +152,22 @@ def _hit_of(raw: bytes) -> Hit | None:
     if event.get("type") != "match":
         return None
     data = event["data"]
-    path, lines = data["path"].get("text"), data["lines"].get("text")
-    if path is None or lines is None or not data["submatches"]:
+    if not data["submatches"]:
         return None
-    column = len(lines.encode("utf-8")[:data["submatches"][0]["start"]].decode("utf-8", errors="ignore"))
-    return Hit(path, data["line_number"], column, _short(lines))
+    lines = _raw(data["lines"])
+    column = len(lines[:data["submatches"][0]["start"]].decode("utf-8", errors="replace"))
+    return Hit(os.fsdecode(_raw(data["path"])), data["line_number"], column, _short(lines.decode("utf-8", errors="replace")))
 
 
-def _scan(root: Path, paths: Sequence[str], query: str, regex: bool, whole_word: bool, limit: int) -> SearchResult:
-    body = query if regex else re.escape(query)
+def _scan(root: Path, paths: Sequence[str], query: str, whole_word: bool, limit: int,
+          cancellation: Cancellation) -> SearchResult:
+    body = re.escape(query)
     flags = 0 if any(char.isupper() for char in query) else re.IGNORECASE
-    try:
-        pattern = re.compile(rf"\b(?:{body})\b" if whole_word else body, flags)
-    except re.error as error:
-        return SearchResult(error=str(error))
+    pattern = re.compile(rf"\b(?:{body})\b" if whole_word else body, flags)
     result = SearchResult()
     for path in sorted(paths):
+        if cancellation.cancelled:
+            return SearchResult()
         for number, line in _lines_of(root / path):
             if match := pattern.search(line):
                 if len(result.hits) >= limit:
@@ -131,12 +178,7 @@ def _scan(root: Path, paths: Sequence[str], query: str, regex: bool, whole_word:
 
 
 def _lines_of(path: Path):
-    try:
-        if path.stat().st_size > MAX_FILE_BYTES:
-            return
-        data = path.read_bytes()
-    except OSError:
-        return
-    if b"\0" in data[:BINARY_PROBE]:
+    data = read_limited(path, MAX_FILE_BYTES)
+    if data is None or b"\0" in data[:BINARY_PROBE]:
         return
     yield from enumerate(data.decode("utf-8", errors="replace").split("\n"), 1)

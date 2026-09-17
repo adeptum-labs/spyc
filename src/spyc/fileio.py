@@ -18,32 +18,20 @@
 # Contact: info@adeptum.se
 
 
-from dataclasses import dataclass
-from typing import Protocol
-
-from rich.text import Text
-
-from spyc.document import Document
+import stat
+from pathlib import Path
 
 
-@dataclass(frozen=True)
-class Item:
-    key: str
-    label: Text
-    line: int | None = None
-    column: int = 0
-
-
-@dataclass(frozen=True)
-class Choice:
-    key: str
-    line: int | None = None
-    column: int = 0
-
-
-class PickerSource(Protocol):
-    placeholder: str
-
-    def search(self, query: str) -> list[Item]: ...
-
-    def preview(self, item: Item) -> Document | None: ...
+# A device or a pipe reports a size of zero and never ends, so the kind of file
+# is checked before it is opened, and never more than the limit is read. A link
+# to a regular file is followed; a link to /dev/zero is not read.
+def read_limited(path: Path, limit: int) -> bytes | None:
+    try:
+        status = path.stat()
+        if not stat.S_ISREG(status.st_mode) or status.st_size > limit:
+            return None
+        with path.open("rb") as handle:
+            data = handle.read(limit + 1)
+    except OSError:
+        return None
+    return data if len(data) <= limit else None

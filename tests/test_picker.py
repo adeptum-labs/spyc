@@ -19,11 +19,13 @@
 
 
 import time
+from pathlib import Path
 
 from rich.text import Text
 from textual.app import App
 from textual.widgets import OptionList
 
+from spyc.document import Document
 from spyc.file_picker import FilePickerSource
 from spyc.fuzzy import PathMatcher
 from spyc.picking import Choice, Item
@@ -35,11 +37,12 @@ from waiting import until
 class FakeSource:
     placeholder = "Find"
 
-    def __init__(self, names=("alpha", "beta", "alps"), line=None):
-        self.names, self.line, self.previewed = names, line, []
+    def __init__(self, names=("alpha", "beta", "alps"), line=None, column=0):
+        self.names, self.line, self.column, self.previewed, self.calls = names, line, column, [], []
 
     def search(self, query):
-        return [Item(name, Text(name), self.line) for name in self.names if query in name]
+        self.calls.append(query)
+        return [Item(name, Text(name), self.line, self.column) for name in self.names if query in name]
 
     def preview(self, item):
         self.previewed.append(item.key)
@@ -131,9 +134,8 @@ async def test_a_file_preview_shows_the_file_and_keeps_its_cursor_to_itself(tmp_
     app = PickerApp(FilePickerSource(tmp_path, PathMatcher(["src/app.py"]), lambda: []))
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("a", "p", "p", "colon", "4", "0")
-        await pilot.pause(0.4)
         view = pilot.app.screen.query_one(CodeView)
-        assert view.document.path.name == "app.py" and view.cursor_row == 39
+        await until(pilot, lambda: view.document is not None and view.document.path.name == "app.py" and view.cursor_row == 39)
     assert app.moves == []
 
 
@@ -188,7 +190,7 @@ async def test_a_slow_search_never_replaces_the_results_of_a_newer_one():
 
 
 async def test_typing_fast_searches_once_when_the_source_wants_a_pause():
-    source = SlowSource(debounce=0.4)
+    source = SlowSource(debounce=1.0)
     async with PickerApp(source).run_test(size=(120, 40)) as pilot:
         await pilot.pause()
         await pilot.press("x", "y", "z")
@@ -214,3 +216,130 @@ async def test_a_picker_can_start_with_a_query_already_typed():
         await pilot.pause()
         assert rows(pilot) == ["alpha", "alps"]
         assert pilot.app.screen.query_one("Input").value == "al"
+
+
+async def test_the_column_of_an_item_travels_with_the_choice():
+    app = PickerApp(FakeSource(line=7, column=4))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("enter")
+        await pilot.pause()
+    assert app.result == Choice("alpha", 7, 4)
+
+
+async def test_a_query_typed_in_advance_is_searched_once():
+    source = FakeSource()
+    app = PickerApp(source)
+    app.picker_query = "al"
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause(0.3)
+    assert source.calls == ["al"]
+
+
+async def test_typing_a_query_back_to_the_one_shown_does_not_search_again():
+    source = FakeSource()
+    async with PickerApp(source).run_test(size=(120, 40)) as pilot:
+        await pilot.press("a", "backspace")
+        await pilot.pause()
+    assert source.calls == ["", "a", ""]
+
+
+class VanishingSource(FakeSource):
+    def preview(self, item):
+        return Document(Path("alpha"), ("alpha text",), None, 0.0) if item.key == "alpha" else None
+
+
+async def test_the_preview_of_a_file_that_is_gone_replaces_the_one_before_it(monkeypatch):
+    monkeypatch.setattr("spyc.screens.picker.PREVIEW_DELAY", 0.05)
+    async with PickerApp(VanishingSource()).run_test(size=(120, 40)) as pilot:
+        view = pilot.app.screen.query_one(CodeView)
+        await until(pilot, lambda: view.document is not None and view.document.lines == ("alpha text",))
+        await pilot.press("down")
+        await until(pilot, lambda: view.document.notice is not None)
+
+
+class BusySource(SlowSource):
+    def __init__(self, debounce=0.0):
+        super().__init__(debounce)
+        self.active = self.most_active = 0
+        self.cancelled = 0
+
+    def cancel(self):
+        self.cancelled += 1
+
+    def search(self, query):
+        self.active += 1
+        self.most_active = max(self.most_active, self.active)
+        try:
+            return super().search(query)
+        finally:
+            self.active -= 1
+
+
+async def test_a_new_search_cancels_the_running_one_and_never_overlaps_it():
+    source = BusySource()
+    async with PickerApp(source).run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("a", "b")
+        await until(pilot, lambda: rows(pilot) == ["result for 'ab'"])
+        assert source.most_active == 1 and source.cancelled >= 2
+
+
+async def test_closing_the_picker_cancels_the_running_search():
+    source = BusySource()
+    async with PickerApp(source).run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        before = source.cancelled
+        await pilot.press("escape")
+        await pilot.pause()
+        assert source.cancelled > before
+
+
+async def test_enter_while_the_answer_to_what_was_typed_is_pending_chooses_nothing():
+    app = PickerApp(SlowSource(debounce=0.4))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("x", "enter")
+        await pilot.pause(0.1)
+        assert app.result == "unset"
+        await until(pilot, lambda: rows(pilot) == ["result for 'x'"])
+        await pilot.press("enter")
+        await pilot.pause()
+    assert app.result == Choice("x", None)
+
+
+class FailingSource(SlowSource):
+    def search(self, query):
+        if query == "x":
+            raise RuntimeError("boom")
+        return super().search(query)
+
+
+async def test_a_search_that_fails_leaves_the_picker_usable():
+    app = PickerApp(FailingSource())
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("x")
+        await until(pilot, lambda: rows(pilot) == [])
+        await pilot.press("backspace", "y")
+        await until(pilot, lambda: rows(pilot) == ["result for 'y'"])
+        await pilot.press("enter")
+        await pilot.pause()
+    assert app.result == Choice("y", None)
+
+
+class KeyedSource(ModalSource):
+    def __init__(self):
+        super().__init__()
+        self.word = False
+
+    def toggle_word(self):
+        self.word = not self.word
+
+
+async def test_the_function_keys_switch_the_modes_where_the_terminal_swallows_alt():
+    source = KeyedSource()
+    async with PickerApp(source).run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("f2", "f3")
+        await pilot.pause()
+        assert source.regex and source.word

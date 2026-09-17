@@ -29,7 +29,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widget import Widget
 from textual.widgets import Footer, Header, OptionList
-from textual.worker import Worker, WorkerState
+from textual.worker import Worker, WorkerState, get_current_worker
 
 from spyc.document import load_document
 from spyc.editor import editor_command
@@ -42,14 +42,15 @@ from spyc.git.repository import Git
 from spyc.git.status import rollup
 from spyc.git.summary import GitSummary
 from spyc.history import JumpHistory, Place
+from spyc.languages import detect_language
 from spyc.location import Location
 from spyc.overview import Overview, build_overview
 from spyc.picking import Choice
 from spyc.printable import printable
 from spyc.search_picker import SearchSource
 from spyc.symbol_index import Located, SymbolIndex, default_cache_path
-from spyc.symbol_picker import SymbolSource
-from spyc.symbols import symbols_of
+from spyc.symbol_picker import LIST_LIMIT, SymbolSource
+from spyc.symbols import Symbol, symbols_of
 from spyc.screens.changes import ChangesScreen
 from spyc.screens.help import HelpScreen
 from spyc.screens.log import LogScreen
@@ -89,28 +90,28 @@ class SpycApp(App):
     #overview, #code { height: 1fr; }
     """
     BINDINGS = [
-        Binding("f", "find_file", "Find file"),
+        Binding("question_mark", "help", "Help"),
+        Binding("q", "quit", "Quit"),
+        Binding("f", "find_file", "Open"),
         Binding("s", "search_project", "Search"),
+        Binding("l", "show_log", "Log"),
         Binding("o", "show_outline", "Outline"),
+        Binding("slash", "search_in_file", "Find"),
+        Binding("d", "go_to_definition", "Goto"),
         Binding("t", "find_symbol", "Symbols", show=False),
-        Binding("d", "go_to_definition", "Definition"),
-        Binding("slash", "search_in_file", "Find in file"),
-        Binding("colon", "goto_line", "Go to line"),
+        Binding("colon", "goto_line", "Line", show=False),
         Binding("left_square_bracket", "history_back", "Back", show=False),
         Binding("right_square_bracket", "history_forward", "Forward", show=False),
-        Binding("l", "show_log", "Log"),
         Binding("L", "show_file_log", "File log", show=False),
         Binding("g", "show_changes", "Changes", show=False),
         Binding("b", "toggle_blame", "Blame", show=False),
         Binding("e", "edit", "Edit", show=False),
         Binding("p", "copy_location", "Copy path", show=False),
-        Binding("i", "overview", "Overview"),
+        Binding("i", "overview", "Info", show=False),
         Binding("backslash", "toggle_sidebar", "Sidebar", show=False),
         Binding("full_stop", "toggle_ignored", "Ignored", show=False),
         Binding("r", "toggle_markdown", "Rendered", show=False),
         Binding("R", "refresh_project", "Refresh", show=False),
-        Binding("question_mark", "help", "Help"),
-        Binding("q", "quit", "Quit"),
     ]
 
     def __init__(self, project_root: Path, start: Location | None = None, store: StateStore | None = None,
@@ -206,10 +207,11 @@ class SpycApp(App):
                               PathMatcher(index.paths))
 
     # The definitions are read in the background after the files are known; a
-    # newer file list makes the running pass stop.
+    # newer file list, or leaving the app, makes the running pass stop.
     @work(thread=True, exclusive=True, group="symbols", exit_on_error=False)
     def _index_symbols(self, generation: int, paths: tuple[str, ...]) -> None:
-        self._symbols.update(paths, stop=lambda: generation != self._index_generation)
+        worker = get_current_worker()
+        self._symbols.update(paths, stop=lambda: worker.is_cancelled or generation != self._index_generation)
 
     def _index_ready(self, generation: int, index: FileIndex, model: TreeModel, overview: Overview,
                      matcher: PathMatcher) -> None:
@@ -292,12 +294,12 @@ class SpycApp(App):
         if event.state is WorkerState.ERROR and event.worker.group == "index":
             self.notify(f"Could not read the project files: {event.worker.error}", severity="error", markup=False)
 
-    def open_file(self, path: str, line: int | None = None) -> None:
+    def open_file(self, path: str, line: int | None = None, column: int = 0) -> None:
         leaving = self._current_place()
-        if self._display_file(path, line):
+        if self._display_file(path, line, column):
             self.history.navigate(leaving, Place(path, line or 1))
 
-    def _display_file(self, path: str, line: int | None) -> bool:
+    def _display_file(self, path: str, line: int | None, column: int = 0) -> bool:
         try:
             document = load_document(self.project_root / path)
         except OSError as error:
@@ -309,7 +311,7 @@ class SpycApp(App):
         self._rendered.display = False
         code.display = True
         if line:
-            self.call_after_refresh(code.goto, line)
+            self.call_after_refresh(code.goto, line, column)
         self.store.add_recent_file(self.project_root, path)
         self._tree.reveal(path)
         code.focus()
@@ -352,12 +354,18 @@ class SpycApp(App):
             return
         self.push_screen(Picker(SearchSource(self.project_root, lambda: self._paths)), self._file_chosen)
 
-    def action_show_outline(self) -> None:
+    def _viewing_for(self, purpose: str) -> CodeView | None:
         code = self._viewing()
         if code is None:
-            self.notify("Open a file to see its outline")
+            self.notify("Press r to leave the rendered view first" if self._rendered.display
+                        else f"Open a file to {purpose}")
+        return code
+
+    def action_show_outline(self) -> None:
+        code = self._viewing_for("see its outline")
+        if code is None:
             return
-        symbols = symbols_of(code.document.text, code.document.language)
+        symbols = self._outline_of(code)
         if not symbols:
             self.notify("No outline for this file")
             return
@@ -367,7 +375,7 @@ class SpycApp(App):
 
     def action_find_symbol(self) -> None:
         source = SymbolSource(self.project_root, self._symbols.all, "Find a definition in the project", True,
-                              self._symbol_progress)
+                              self._symbol_progress, LIST_LIMIT)
         self.push_screen(Picker(source), self._file_chosen)
 
     def _symbol_progress(self) -> str:
@@ -378,9 +386,8 @@ class SpycApp(App):
     # project, the nearest first. With none but the one under the cursor the
     # places where the name is used are more useful than nothing.
     def action_go_to_definition(self) -> None:
-        code = self._viewing()
+        code = self._viewing_for("look up a definition")
         if code is None:
-            self.notify("Open a file to look up a definition")
             return
         word = code.word_at_cursor()
         if word is None:
@@ -388,29 +395,37 @@ class SpycApp(App):
             return
         here = (code.display_path, code.cursor_row + 1)
         candidates = [item for item in self._definitions_of(word, code) if (item.path, item.symbol.line) != here]
-        if len(candidates) == 1:
-            self.open_file(candidates[0].path, candidates[0].symbol.line)
+        if len(candidates) == 1 and detect_language(candidates[0].path) == code.document.language:
+            self.open_file(candidates[0].path, candidates[0].symbol.line, candidates[0].symbol.column)
         elif candidates:
             source = SymbolSource(self.project_root, lambda: candidates, f"Definitions of {printable(word)}", True)
             self.push_screen(Picker(source), self._file_chosen)
         else:
-            self.notify(f"No definition of {printable(word)} found; showing where it is used", markup=False)
+            self.notify(f"No definition of {printable(word)} found{self._index_progress_note()}; showing where it is used",
+                        markup=False)
             source = SearchSource(self.project_root, lambda: self._paths or (), whole_word=True)
             self.push_screen(Picker(source, word), self._file_chosen)
 
-    def _definitions_of(self, word: str, code: CodeView) -> list[Located]:
+    def _index_progress_note(self) -> str:
+        return " yet, the index is still being built" if self._symbols.done < self._symbols.total else ""
+
+    # A file that is too big or has too long lines to be colored is not parsed either.
+    @staticmethod
+    def _outline_of(code: CodeView) -> list[Symbol]:
         document = code.document
-        current = [Located(code.display_path, symbol) for symbol in symbols_of(document.text, document.language)
-                   if symbol.name == word]
+        return [] if document.plain else symbols_of(document.text, document.language)
+
+    def _definitions_of(self, word: str, code: CodeView) -> list[Located]:
+        current = [Located(code.display_path, symbol) for symbol in self._outline_of(code) if symbol.name == word]
         elsewhere = [item for item in self._symbols.lookup(word) if item.path != code.display_path]
         return sorted(current + elsewhere, key=lambda item: _nearness(item, code.display_path))
 
     def _file_chosen(self, choice: Choice | None) -> None:
         if choice is not None:
-            self.open_file(choice.key, choice.line)
+            self.open_file(choice.key, choice.line, choice.column)
 
     def action_search_in_file(self) -> None:
-        if self._viewing() is not None:
+        if self._viewing_for("search in it") is not None:
             self.push_screen(Prompt("Find in file", self._last_query), self._searched)
 
     def _searched(self, query: str | None) -> None:
@@ -425,7 +440,7 @@ class SpycApp(App):
         self._refresh_status()
 
     def action_goto_line(self) -> None:
-        if self._viewing() is not None:
+        if self._viewing_for("go to a line") is not None:
             self.push_screen(Prompt("Go to line", restrict=r"[0-9]*"), self._went_to)
 
     def _went_to(self, value: str | None) -> None:

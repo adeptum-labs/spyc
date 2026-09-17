@@ -30,8 +30,8 @@ ENTRIES = [
     Located("src/c\x1b.py", Symbol("prerender", "function", 9, 4))]
 
 
-def source(show_path=True, status=lambda: ""):
-    return SymbolSource(None, lambda: ENTRIES, "Find a definition", show_path, status)
+def source(show_path=True, status=lambda: "", entries=ENTRIES, limit=None):
+    return SymbolSource(None, lambda: entries, "Find a definition", show_path, status, limit)
 
 
 def test_an_empty_query_lists_every_definition_in_order():
@@ -70,3 +70,42 @@ def test_the_preview_loads_the_file_and_a_vanished_file_gives_none(tmp_path):
     assert picker.preview(item).lines[0] == "def render(): pass"
     (tmp_path / "a.py").unlink()
     assert picker.preview(item) is None
+
+
+MANY = [Located(f"src/m{index}.py", Symbol(f"name{index}", "function", index + 1, 4)) for index in range(300)]
+
+
+def test_the_path_can_be_searched_as_well_as_the_name_when_it_is_shown():
+    assert [item.key for item in source().search("b.py")] == ["src/b.py"]
+    assert source(show_path=False).search("b.py") == []
+
+
+def test_a_query_of_a_name_and_a_directory_narrows_to_the_definitions_in_it():
+    assert [item.line for item in source().search("render src")] == [9]
+
+
+def test_the_position_of_the_name_travels_with_the_item():
+    assert source().search("reader")[0].column == 4
+
+
+def test_the_list_of_the_whole_project_is_cut_and_says_how_much_was_left_out():
+    picker = source(entries=MANY, limit=200)
+    assert len(picker.search("")) == 200
+    assert picker.summary() == "200 of 300"
+    assert picker.search("name29")[0].key == "src/m29.py" and picker.summary() == ""
+    assert len(picker.search("name")) == 200 and picker.summary() == "200 of 300"
+
+
+def test_the_cut_and_the_progress_of_the_index_are_both_said():
+    picker = source(entries=MANY, limit=200, status=lambda: "indexing 3/9")
+    picker.search("")
+    assert picker.summary() == "indexing 3/9  200 of 300"
+
+
+def test_an_outline_or_a_list_of_candidates_is_never_cut():
+    picker = source(show_path=False, entries=MANY)
+    assert len(picker.search("")) == 300 and picker.summary() == ""
+
+
+def test_only_the_list_of_the_whole_project_is_searched_in_the_background():
+    assert source(entries=MANY, limit=200).threaded and not source(entries=MANY).threaded

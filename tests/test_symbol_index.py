@@ -58,13 +58,6 @@ def test_a_name_is_looked_up_across_files_without_headings(project):
     assert index.lookup("nothing") == []
 
 
-def test_the_definitions_of_one_file_can_be_asked_for(project):
-    index = SymbolIndex(project)
-    index.update(PATHS)
-    assert [symbol.name for symbol in index.in_file("src/B.java")] == ["B", "foo"]
-    assert index.in_file("missing.py") == []
-
-
 def test_files_that_did_not_change_are_not_read_again_from_the_cache(project, tmp_path, monkeypatch):
     cache = tmp_path / "cache.json"
     SymbolIndex(project, cache).update(PATHS)
@@ -93,7 +86,7 @@ def test_binary_and_huge_files_are_skipped(project, monkeypatch):
     monkeypatch.setattr(spyc.symbol_index, "MAX_SYMBOL_FILE", 10)
     index = SymbolIndex(project)
     index.update(("big.py", "bin.py"))
-    assert index.all() == []
+    assert index.all() == ()
 
 
 def test_the_update_can_be_stopped(project):
@@ -119,3 +112,61 @@ def test_the_cache_lives_under_xdg_cache_home_per_project(monkeypatch, tmp_path,
 
 def test_located_entries_compare_by_value():
     assert Located("a.py", Symbol("f", "function", 1, 4)) == Located("a.py", Symbol("f", "function", 1, 4))
+
+
+def test_creating_an_index_reads_nothing_and_the_cache_is_read_by_the_update(project, tmp_path):
+    cache = tmp_path / "cache.json"
+    SymbolIndex(project, cache).update(PATHS)
+    later = SymbolIndex(project, cache)
+    assert later.all() == ()
+    later.update(PATHS)
+    assert len(later.all()) == 4
+
+
+def test_a_cache_that_nothing_changed_is_not_written_again(project, tmp_path):
+    cache = tmp_path / "cache.json"
+    SymbolIndex(project, cache).update(PATHS)
+    os.utime(cache, ns=(1, 1))
+    SymbolIndex(project, cache).update(PATHS)
+    assert cache.stat().st_mtime_ns == 1
+    (project / "a.py").write_text("def other():\n    pass\n")
+    SymbolIndex(project, cache).update(PATHS)
+    assert cache.stat().st_mtime_ns != 1
+
+
+def test_two_saves_never_share_a_temporary_file(project, tmp_path, monkeypatch):
+    sources = []
+    real = os.replace
+    monkeypatch.setattr(spyc.symbol_index.os, "replace", lambda source, target: sources.append(source) or real(source, target))
+    SymbolIndex(project, tmp_path / "cache.json").update(PATHS)
+    SymbolIndex(project, tmp_path / "cache.json").update(("a.py",))
+    assert len(sources) == 2 and sources[0] != sources[1]
+    assert sorted(path.name for path in tmp_path.glob("cache*")) == ["cache.json"]
+
+
+def test_a_cache_from_another_version_of_the_grammars_is_not_trusted(project, tmp_path, monkeypatch):
+    cache = tmp_path / "cache.json"
+    monkeypatch.setattr(spyc.symbol_index, "_signature", lambda: "spyc 1, tree-sitter-python 1")
+    SymbolIndex(project, cache).update(PATHS)
+    parsed = []
+    real = spyc.symbol_index.symbols_of
+    monkeypatch.setattr(spyc.symbol_index, "symbols_of", lambda text, language: parsed.append(language.id) or real(text, language))
+    SymbolIndex(project, cache).update(PATHS)
+    assert parsed == []
+    monkeypatch.setattr(spyc.symbol_index, "_signature", lambda: "spyc 1, tree-sitter-python 2")
+    SymbolIndex(project, cache).update(PATHS)
+    assert sorted(parsed) == ["java", "markdown", "python"]
+
+
+def test_the_signature_names_spyc_and_the_grammars_in_use():
+    signature = spyc.symbol_index._signature()
+    assert "spyc=" in signature and "tree-sitter-python=" in signature
+
+
+def test_lookups_follow_the_files_as_they_are_indexed(project):
+    index = SymbolIndex(project)
+    index.update(("a.py",))
+    assert names(index.lookup("foo")) == [("a.py", "foo", 1)]
+    write_files(project, {"c.py": "def foo(): pass\n"})
+    index.update(("a.py", "c.py"))
+    assert names(index.lookup("foo")) == [("a.py", "foo", 1), ("c.py", "foo", 1)]

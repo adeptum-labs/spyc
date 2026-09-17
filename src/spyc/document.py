@@ -18,6 +18,9 @@
 # Contact: info@adeptum.se
 
 
+import errno
+import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,6 +49,10 @@ class Document:
 
 def load_document(path: Path) -> Document:
     status = path.stat()
+    if stat.S_ISDIR(status.st_mode):
+        raise IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR), str(path))
+    if not stat.S_ISREG(status.st_mode):
+        return Document(path, (), None, status.st_mtime, notice="Not a regular file")
     if status.st_size > FILE_LIMIT:
         return Document(path, (), None, status.st_mtime, notice=f"File too large to show, {status.st_size:,} bytes")
     data = path.read_bytes()

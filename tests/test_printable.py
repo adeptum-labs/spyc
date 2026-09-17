@@ -18,6 +18,8 @@
 # Contact: info@adeptum.se
 
 
+import os
+
 from textual.app import App
 
 from repos import write_files
@@ -81,3 +83,7 @@ def test_the_readme_preview_and_the_status_line_are_clean(tmp_path):
     overview = build_overview(build_index(tmp_path))
     assert "\x1b" not in overview.readme
     assert "\x1b" not in status_line(f"a{ESCAPE}.py", None, 0, 0, 1)
+
+
+def test_bytes_that_are_not_text_in_a_file_name_are_shown_as_replacement_characters():
+    assert printable("caf" + os.fsdecode(b"\xe9") + ".txt") == "caf�.txt"
