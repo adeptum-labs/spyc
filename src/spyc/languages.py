@@ -19,7 +19,7 @@
 
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from pathlib import PurePosixPath
 
@@ -37,6 +37,7 @@ class Language:
     grammar: tuple[str, str] | None = None
     highlights: tuple[tuple[str, str], ...] = ()
     lexer: str | None = None
+    tags: tuple[tuple[str, str], ...] = ()
 
 
 def grammar(package: str, function: str = "language", *queries: tuple[str, str]) -> dict:
@@ -47,8 +48,26 @@ JS_HIGHLIGHTS = ("tree_sitter_javascript", "queries/highlights.scm")
 JSX_HIGHLIGHTS = ("tree_sitter_javascript", "queries/highlights-jsx.scm")
 TS_HIGHLIGHTS = ("tree_sitter_typescript", "queries/highlights.scm")
 
+JS_TAGS = ("tree_sitter_javascript", "queries/tags.scm")
+TS_TAGS = ("tree_sitter_typescript", "queries/tags.scm")
+OWN_TS_TAGS = ("spyc.syntax", "queries/typescript/tags.scm")
+# Queries that find the definitions of a file, for the outline and for go-to-definition.
+TAGS = {
+    "python": (("tree_sitter_python", "queries/tags.scm"),),
+    "java": (("tree_sitter_java", "queries/tags.scm"),),
+    "go": (("tree_sitter_go", "queries/tags.scm"),),
+    "rust": (("tree_sitter_rust", "queries/tags.scm"),),
+    "c": (("tree_sitter_c", "queries/tags.scm"),),
+    "cpp": (("tree_sitter_cpp", "queries/tags.scm"),),
+    "javascript": (JS_TAGS,),
+    "typescript": (TS_TAGS, JS_TAGS, OWN_TS_TAGS),
+    "tsx": (TS_TAGS, JS_TAGS, OWN_TS_TAGS),
+    "kotlin": (("spyc.syntax", "queries/kotlin/tags.scm"),),
+    "bash": (("spyc.syntax", "queries/bash/tags.scm"),),
+}
+
 # A query that extends another comes first, because the first matching pattern wins.
-LANGUAGES = (
+_DEFINED = (
     Language("bash", "Bash", (".sh", ".bash", ".zsh"), (".bashrc", ".bash_profile", ".profile", ".zshrc", "PKGBUILD"),
              ("sh", "bash", "zsh", "dash", "ksh"), lexer="bash", **grammar("tree_sitter_bash")),
     Language("c", "C", (".c", ".h"), lexer="c", **grammar("tree_sitter_c")),
@@ -84,6 +103,7 @@ LANGUAGES = (
              **grammar("tree_sitter_xml", "language_xml", ("tree_sitter_xml", "queries/xml/highlights.scm"))),
     Language("yaml", "YAML", (".yml", ".yaml"), (".clang-format",), lexer="yaml", **grammar("tree_sitter_yaml")),
 )
+LANGUAGES = tuple(replace(language, tags=TAGS.get(language.id, ())) for language in _DEFINED)
 LANGUAGES_BY_ID = {language.id: language for language in LANGUAGES}
 BY_EXTENSION = {extension: language for language in LANGUAGES for extension in language.extensions}
 BY_FILENAME = {filename: language for language in LANGUAGES for filename in language.filenames}

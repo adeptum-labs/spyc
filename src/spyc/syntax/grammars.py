@@ -43,9 +43,26 @@ def load_grammar(language: Language) -> tuple[TreeSitterLanguage, str] | None:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
             ts_language = TreeSitterLanguage(getattr(importlib.import_module(module), function)())
-        query = "\n".join(resources.files(package).joinpath(path).read_text(encoding="utf-8")
-                          for package, path in language.highlights)
+        query = _read_queries(language.highlights)
     except Exception as error:
         log.warning("No tree-sitter grammar for %s: %s", language.id, error)
         return None
     return ts_language, query
+
+
+def _read_queries(references: tuple[tuple[str, str], ...]) -> str:
+    return "\n".join(resources.files(package).joinpath(path).read_text(encoding="utf-8")
+                     for package, path in references)
+
+
+# The grammar of the language with the queries that find its definitions.
+@cache
+def load_tags(language: Language) -> tuple[TreeSitterLanguage, str] | None:
+    grammar = load_grammar(language)
+    if grammar is None or not language.tags:
+        return None
+    try:
+        return grammar[0], _read_queries(language.tags)
+    except Exception as error:
+        log.warning("No tags queries for %s: %s", language.id, error)
+        return None
