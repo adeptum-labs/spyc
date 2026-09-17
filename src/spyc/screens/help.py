@@ -29,6 +29,7 @@ from textual.widgets import Static
 # of SpycApp, and a test fails when a binding has no row.
 HELP_ROWS: list[tuple[str, str | None, str]] = [
     ("f", "find_file", "Find a file by name; name:line jumps to a line"),
+    ("s", "search_project", "Search the text of the project; alt+r switches to a pattern, alt+w to whole words"),
     ("/", "search_in_file", "Find in the file; n and N step through the matches"),
     (":", "goto_line", "Go to a line"),
     ("[  ]", "history_back", "Back through the files you have visited"),

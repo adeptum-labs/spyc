@@ -46,6 +46,7 @@ from spyc.location import Location
 from spyc.overview import Overview, build_overview
 from spyc.picking import Choice
 from spyc.printable import printable
+from spyc.search_picker import SearchSource
 from spyc.screens.changes import ChangesScreen
 from spyc.screens.help import HelpScreen
 from spyc.screens.log import LogScreen
@@ -66,7 +67,7 @@ MARKDOWN_LIMIT = 50_000
 # Keys that act on the main view, which is hidden behind the log, the changes
 # and the pickers while those are open.
 MAIN_VIEW_ACTIONS = frozenset({
-    "find_file", "search_in_file", "goto_line", "history_back", "history_forward", "show_log", "show_file_log",
+    "find_file", "search_project", "search_in_file", "goto_line", "history_back", "history_forward", "show_log", "show_file_log",
     "show_changes", "toggle_blame", "edit", "copy_location", "overview", "toggle_sidebar", "toggle_ignored",
     "toggle_markdown", "refresh_project"})
 
@@ -80,6 +81,7 @@ class SpycApp(App):
     """
     BINDINGS = [
         Binding("f", "find_file", "Find file"),
+        Binding("s", "search_project", "Search"),
         Binding("slash", "search_in_file", "Find in file"),
         Binding("colon", "goto_line", "Go to line"),
         Binding("left_square_bracket", "history_back", "Back", show=False),
@@ -115,6 +117,7 @@ class SpycApp(App):
         self._start_location = start
         self._max_files = max_files
         self._matcher: PathMatcher | None = None
+        self._paths: tuple[str, ...] | None = None
         self._show_ignored = False
         self._index_generation = 0
         self._last_query = ""
@@ -193,7 +196,7 @@ class SpycApp(App):
                      matcher: PathMatcher) -> None:
         if generation != self._index_generation:
             return
-        self.overview, self._matcher = overview, matcher
+        self.overview, self._matcher, self._paths = overview, matcher, index.paths
         self._tree.load(model)
         self._overview_pane.show(overview)
         if index.truncated:
@@ -322,6 +325,12 @@ class SpycApp(App):
             return
         source = FilePickerSource(self.project_root, self._matcher, lambda: self.store.recent_files(self.project_root))
         self.push_screen(Picker(source), self._file_chosen)
+
+    def action_search_project(self) -> None:
+        if self._paths is None:
+            self.notify("Still reading the project files")
+            return
+        self.push_screen(Picker(SearchSource(self.project_root, lambda: self._paths)), self._file_chosen)
 
     def _file_chosen(self, choice: Choice | None) -> None:
         if choice is not None:
