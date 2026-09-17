@@ -37,6 +37,14 @@ def test_a_tags_query_that_cannot_be_loaded_is_named(monkeypatch):
     assert "No definition queries for Python" in selftest.problems()
 
 
+def test_a_definition_query_that_does_not_compile_is_named(monkeypatch):
+    real = selftest.load_tags
+    monkeypatch.setattr(selftest, "load_tags",
+                        lambda language: (real(language)[0], "(no_such_node_type) @name") if language.id == "python" else real(language))
+    (problem,) = selftest.problems()
+    assert problem.startswith("Definition queries for Python do not compile: ")
+
+
 def test_a_language_that_fails_to_highlight_is_named(monkeypatch):
     def broken(language, text):
         raise RuntimeError("boom")

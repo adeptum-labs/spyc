@@ -11,7 +11,7 @@ files as a tree, colors the code, shows the history from git, and is meant to be
 
 ## Requirements
 
-- Python 3.11 or later
+- Python 3.11 or later, when installing from source
 - `git` on the path (lists the files of a project and gives the history, changes and blame)
 - `rg` (ripgrep) is optional: it makes the search of the whole project fast and is needed for pattern search; without
   it the files are read in Python and the search is literal
@@ -19,7 +19,7 @@ files as a tree, colors the code, shows the history from git, and is meant to be
 ## Install
 
 Each release has a Debian package and a single-file executable for `amd64` and `arm64`. They are built on Debian 12
-and run on Debian 12 and later and on Ubuntu 22.04 and later, and need no Python.
+and run on Debian 12 and later and on Ubuntu 24.04 and later (they need glibc 2.36), and need no Python.
 
 ```sh
 sudo apt install ./spyc_0.1.0-1_amd64.deb     # brings git, and ripgrep as a recommendation

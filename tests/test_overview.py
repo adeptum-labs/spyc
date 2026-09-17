@@ -81,3 +81,11 @@ def test_summary_says_when_the_file_list_was_capped(tmp_path):
     write_files(tmp_path, {"a.py": "x"})
     overview = build_overview(build_index(tmp_path, limit=0))
     assert "capped" in summary_text(overview).plain
+
+
+def test_a_project_of_one_file_says_file_not_files(tmp_path):
+    def count_of(root, files):
+        return summary_text(overview_of(root, files)).plain.splitlines()[2].split(" · ")[0]
+
+    assert count_of(tmp_path / "one", {"a.py": "x"}) == "1 file"
+    assert count_of(tmp_path / "two", {"a.py": "x", "b.py": "y"}) == "2 files"

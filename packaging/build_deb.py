@@ -31,7 +31,8 @@ from spyc.languages import LANGUAGES
 ROOT = Path(__file__).resolve().parent.parent
 LIB_DIR = "usr/lib/spyc"
 DEB_REVISION = 1
-DEPENDS = "git"
+# The bundle carries Debian 12's libexpat, which needs glibc 2.36.
+DEPENDS = "libc6 (>= 2.36), git"
 RECOMMENDS = "ripgrep"
 LONG_DESCRIPTION = (
     "Shows a code base in the terminal: the files as a tree, the code colored",
@@ -55,11 +56,16 @@ def project_metadata(pyproject: Path = ROOT / "pyproject.toml") -> dict:
     return tomllib.loads(pyproject.read_text())["project"]
 
 
+# A development version sorts before the release it leads up to, as ~ does in Debian versions.
+def debian_version(version: str) -> str:
+    return re.sub(r"\.dev(\d+)$", r"~dev\1", version)
+
+
 def control_text(project: dict, arch: str) -> str:
     author = project["authors"][0]
     header = [
         "Package: spyc",
-        f"Version: {project['version']}-{DEB_REVISION}",
+        f"Version: {debian_version(project['version'])}-{DEB_REVISION}",
         f"Architecture: {arch}",
         "Section: devel",
         "Priority: optional",
@@ -72,7 +78,7 @@ def control_text(project: dict, arch: str) -> str:
 
 
 def assemble(tree: Path, bundle: Path, project: dict, arch: str) -> None:
-    shutil.copytree(bundle, tree / LIB_DIR)
+    shutil.copytree(bundle, tree / LIB_DIR, symlinks=True)
     binaries = tree / "usr/bin"
     binaries.mkdir(parents=True)
     (binaries / "spyc").symlink_to("../lib/spyc/spyc")
@@ -82,6 +88,15 @@ def assemble(tree: Path, bundle: Path, project: dict, arch: str) -> None:
     debian = tree / "DEBIAN"
     debian.mkdir()
     (debian / "control").write_text(control_text(project, arch))
+    normalise_modes(tree)
+
+
+# dpkg-deb keeps the modes it finds, so a group-writable file made under a
+# different umask would be installed that way, and one made under 077 refused.
+def normalise_modes(tree: Path) -> None:
+    for path in (tree, *tree.rglob("*")):
+        if not path.is_symlink():
+            path.chmod(0o755 if path.is_dir() or path.stat().st_mode & 0o100 else 0o644)
 
 
 # The bundle is built for the machine it runs on, so the label comes from the

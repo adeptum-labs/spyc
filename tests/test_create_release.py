@@ -20,18 +20,22 @@
 
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import time
 import tomllib
 from pathlib import Path
 
 import pytest
 
 SCRIPT = Path(__file__).resolve().parent.parent / "create-release.sh"
+# The git configuration of whoever runs the tests (signing, hooks) must not change what the script meets.
+ISOLATED = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "PYTHON": sys.executable}
 
 
 def git(repo, *arguments):
-    return subprocess.run(["git", *arguments], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
+    return subprocess.run(["git", *arguments], cwd=repo, capture_output=True, text=True, check=True, env=ISOLATED).stdout.strip()
 
 
 def make_repo(tmp_path, version="0.1.0.dev0"):
@@ -49,9 +53,8 @@ def make_repo(tmp_path, version="0.1.0.dev0"):
 
 
 def release(repo, *arguments):
-    environment = {**os.environ, "PYTHON": sys.executable}
     return subprocess.run(["bash", "create-release.sh", *arguments], cwd=repo, capture_output=True, text=True,
-                          stdin=subprocess.DEVNULL, env=environment)
+                          stdin=subprocess.DEVNULL, env=ISOLATED)
 
 
 def version_in(repo, revision=None):
@@ -165,5 +168,79 @@ def test_nothing_is_pushed(tmp_path):
     remote = tmp_path / "remote.git"
     subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
     git(repo, "remote", "add", "origin", str(remote))
-    release(repo, "--skip-tests")
+    assert release(repo, "--skip-tests").returncode == 0
     assert subprocess.run(["git", "--git-dir", str(remote), "tag"], capture_output=True, text=True).stdout == ""
+
+
+def hook(repo, name, body):
+    path = repo / ".git" / "hooks" / name
+    path.write_text(f"#!/bin/sh\n{body}\n")
+    path.chmod(0o755)
+
+
+def assert_untouched(repo, start):
+    assert git(repo, "rev-parse", "HEAD") == start
+    assert git(repo, "tag") == "" and git(repo, "status", "--porcelain") == ""
+    assert version_in(repo) == "0.1.0.dev0"
+
+
+def test_a_hook_that_refuses_the_release_commit_leaves_the_repository_as_it_was(tmp_path):
+    repo = make_repo(tmp_path)
+    start = git(repo, "rev-parse", "HEAD")
+    hook(repo, "pre-commit", "exit 1")
+    assert release(repo, "--skip-tests").returncode != 0
+    assert_untouched(repo, start)
+
+
+def test_a_hook_that_refuses_the_next_version_takes_the_whole_release_back(tmp_path):
+    repo = make_repo(tmp_path)
+    start = git(repo, "rev-parse", "HEAD")
+    hook(repo, "commit-msg", 'if head -n 1 "$1" | grep -q "^Start"; then exit 1; fi')
+    assert release(repo, "--skip-tests").returncode != 0
+    assert_untouched(repo, start)
+
+
+def test_a_tag_that_cannot_be_made_takes_the_release_commit_back(tmp_path):
+    repo = make_repo(tmp_path)
+    start = git(repo, "rev-parse", "HEAD")
+    git(repo, "config", "tag.gpgSign", "true")
+    git(repo, "config", "gpg.program", "false")
+    assert release(repo, "--skip-tests").returncode != 0
+    assert_untouched(repo, start)
+
+
+def test_an_interrupted_release_puts_the_version_back(tmp_path):
+    repo = make_repo(tmp_path)
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_slow.py").write_text("import time\n\n\ndef test_slow():\n    time.sleep(60)\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "Add a slow test")
+    start = git(repo, "rev-parse", "HEAD")
+    process = subprocess.Popen(["bash", "create-release.sh"], cwd=repo, stdin=subprocess.DEVNULL, env=ISOLATED,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    deadline = time.monotonic() + 20
+    while version_in(repo) != "0.1.0" and time.monotonic() < deadline:
+        time.sleep(0.05)
+    time.sleep(0.5)
+    os.killpg(process.pid, signal.SIGTERM)
+    process.wait(timeout=20)
+    assert_untouched(repo, start)
+
+
+def test_only_the_version_of_the_project_table_is_changed(tmp_path):
+    repo = make_repo(tmp_path)
+    other = '[tool.other]\nversion = "9.9"\n\n'
+    (repo / "pyproject.toml").write_text(other + '[project]\nname = "spyc"\nversion = "0.1.0.dev0"\n\n[tool.later]\nversion = "8.8"\n')
+    git(repo, "commit", "-q", "-am", "Other tables with versions")
+    assert release(repo, "--skip-tests").returncode == 0
+    tables = tomllib.loads((repo / "pyproject.toml").read_text())
+    assert (tables["tool"]["other"]["version"], tables["tool"]["later"]["version"], tables["project"]["version"]) == \
+        ("9.9", "8.8", "0.1.1.dev0")
+
+
+def test_a_detached_head_is_refused(tmp_path):
+    repo = make_repo(tmp_path)
+    git(repo, "checkout", "-q", "--detach")
+    result = release(repo, "--skip-tests")
+    assert result.returncode != 0 and "detached" in result.stderr
+    assert git(repo, "tag") == ""

@@ -101,10 +101,11 @@ project_version() {
 	"$python" -c 'import sys, tomllib; print(tomllib.load(open(sys.argv[1], "rb"))["project"]["version"])' "$PYPROJECT"
 }
 
-# Rewrites the one version line, then reads the file back, so a pattern that
-# matched nothing is caught rather than committed.
+# Rewrites the version line of the [project] table, and no other table's, then
+# reads the file back, so a pattern that matched nothing is caught rather than
+# committed.
 set_version() {
-	sed -i "s/^version = \".*\"/version = \"$1\"/" "$PYPROJECT"
+	sed -i "/^\[project\]/,/^\[/ s/^version = \".*\"/version = \"$1\"/" "$PYPROJECT"
 	[ "$(project_version)" = "$1" ] || die "pyproject.toml did not take the version $1."
 }
 
@@ -113,6 +114,7 @@ cd "$ROOT"
 # --- what the release must be able to assume ---------------------------------
 
 git rev-parse --git-dir >/dev/null 2>&1 || die "Not a git repository."
+git symbolic-ref -q HEAD >/dev/null || die "HEAD is detached; check out the branch to release from first."
 
 dirty="$(git status --porcelain)"
 [ -z "$dirty" ] || die "Working tree is not clean; commit or stash first:
@@ -143,15 +145,24 @@ fi
 
 # --- fix the version and verify it --------------------------------------------
 
+# Whatever stops the release, a refused test, a hook, a tag that cannot be made
+# or a signal, takes back what it had done: the tag, the commits and the
+# version, so the working copy is as it was found and can be released again.
+start="$(git rev-parse HEAD)"
+finished="no"
+undo_release() {
+	[ "$finished" = "yes" ] && return
+	git tag -d "$tag" >/dev/null 2>&1 || true
+	git reset -q "$start" 2>/dev/null || true
+	git checkout -q -- pyproject.toml 2>/dev/null || true
+}
+trap undo_release EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
 step "Setting the version to $version"
 set_version "$version"
-
-# Everything is put back if the tests refuse, so a failed release leaves the
-# working copy exactly as it was found.
-restore_version() {
-	git checkout -- pyproject.toml 2>/dev/null || true
-}
-trap restore_version ERR
 
 case "$tests" in
 	run)
@@ -162,8 +173,6 @@ case "$tests" in
 		step "Skipping the tests; nothing is verified"
 		;;
 esac
-
-trap - ERR
 
 # --- record it -----------------------------------------------------------------
 
@@ -181,6 +190,8 @@ step "Opening the next development version"
 set_version "$next"
 git add pyproject.toml
 git commit -q -m "Start $next"
+
+finished="yes"
 
 printf '\n\033[1mReleased %s\033[0m\n' "$version"
 printf '  tag    %s\n' "$tag"

@@ -48,9 +48,15 @@ def test_control_names_the_package_version_and_architecture():
     assert (control["Package"], control["Version"], control["Architecture"]) == ("spyc", "1.2.3-1", "arm64")
 
 
-def test_control_depends_on_git_and_recommends_ripgrep():
+def test_control_depends_on_the_glibc_of_the_build_and_on_git_and_recommends_ripgrep():
     control = fields(build_deb.control_text(PROJECT, "amd64"))
-    assert (control["Depends"], control["Recommends"]) == ("git", "ripgrep")
+    assert (control["Depends"], control["Recommends"]) == ("libc6 (>= 2.36), git", "ripgrep")
+
+
+def test_a_development_version_sorts_before_the_release_it_leads_up_to():
+    control = fields(build_deb.control_text({**PROJECT, "version": "0.1.0.dev0"}, "amd64"))
+    assert control["Version"] == "0.1.0~dev0-1"
+    assert build_deb.debian_version("0.1.0") == "0.1.0"
 
 
 def test_control_takes_maintainer_and_summary_from_the_project():
@@ -104,6 +110,30 @@ def test_the_control_file_is_written_for_the_architecture(tree):
     assert "Architecture: amd64" in (tree / "DEBIAN/control").read_text()
 
 
+def test_files_are_installed_with_the_same_modes_whatever_the_umask_of_the_build(tmp_path):
+    bundle = tmp_path / "bundle"
+    (bundle / "lib").mkdir(parents=True)
+    (bundle / "lib" / "data").write_text("x")
+    (bundle / "lib" / "data").chmod(0o666)
+    (bundle / "spyc").write_text("#!/bin/sh\n")
+    (bundle / "spyc").chmod(0o775)
+    (bundle / "lib").chmod(0o777)
+    build_deb.assemble(tmp_path / "tree", bundle, PROJECT, "amd64")
+    modes = {path.relative_to(tmp_path / "tree").as_posix(): path.stat().st_mode & 0o777
+             for path in (tmp_path / "tree").rglob("*") if not path.is_symlink()}
+    assert modes["usr/lib/spyc/lib/data"] == 0o644 and modes["usr/lib/spyc/spyc"] == 0o755
+    assert modes["usr/lib/spyc/lib"] == 0o755 and modes["usr/share/doc/spyc/copyright"] == 0o644
+
+
+def test_a_link_inside_the_bundle_stays_a_link(tmp_path):
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "spyc").write_text("x")
+    (bundle / "libx.so").symlink_to("libx.so.1")
+    build_deb.assemble(tmp_path / "tree", bundle, PROJECT, "amd64")
+    assert os.readlink(tmp_path / "tree/usr/lib/spyc/libx.so") == "libx.so.1"
+
+
 def test_the_host_architecture_comes_from_dpkg():
     calls = []
 
@@ -131,7 +161,8 @@ def test_every_grammar_that_a_language_names_is_collected(tmp_path):
     from spyc.languages import LANGUAGES
     command = build_deb.pyinstaller_command(tmp_path, onefile=False, project=PROJECT)
     wanted = {language.grammar[0] for language in LANGUAGES if language.grammar}
-    assert len(wanted) >= 15 and wanted <= set(flags(command, "--collect-all"))
+    assert {"tree_sitter_python", "tree_sitter_typescript", "tree_sitter_kotlin", "tree_sitter_bash"} <= wanted
+    assert wanted <= set(flags(command, "--collect-all"))
 
 
 @pytest.mark.parametrize(("onefile", "flag", "other"), [(False, "--onedir", "--onefile"), (True, "--onefile", "--onedir")])
@@ -147,5 +178,5 @@ def test_the_bundle_carries_the_metadata_of_spyc_and_of_the_tree_sitter_packages
 
 
 def test_the_real_dependencies_all_have_metadata_to_copy(tmp_path):
-    command = build_deb.pyinstaller_command(tmp_path, onefile=False)
-    assert len(flags(command, "--copy-metadata")) == 20
+    copied = flags(build_deb.pyinstaller_command(tmp_path, onefile=False), "--copy-metadata")
+    assert {"spyc", "tree-sitter", "tree-sitter-python", "tree-sitter-kotlin"} <= set(copied) and len(copied) == 20

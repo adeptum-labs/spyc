@@ -98,7 +98,8 @@ def summary_text(overview: Overview) -> Text:
     text = Text()
     text.append(f"{printable(overview.name)}\n", style="bold")
     text.append(f"{printable(str(overview.root))}\n", style="dim")
-    text.append(" · ".join([f"{overview.file_count:,} files", *overview.build_systems]) + "\n")
+    noun = "file" if overview.file_count == 1 else "files"
+    text.append(" · ".join([f"{overview.file_count:,} {noun}", *overview.build_systems]) + "\n")
     if overview.truncated:
         text.append(f"The file list is capped at {MAX_INDEXED_FILES:,} files.\n", style="yellow")
     if overview.sampled:

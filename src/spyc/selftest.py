@@ -22,6 +22,7 @@ from spyc.coverage.safe_xml import parse_xml
 from spyc.languages import LANGUAGES, Language
 from spyc.syntax.factory import make_highlighter
 from spyc.syntax.grammars import load_grammar, load_tags
+from spyc.syntax.tree_sitter_highlighter import compile_query
 
 
 # What a packaged executable can lose without saying so: a grammar wheel, a
@@ -32,10 +33,22 @@ def problems() -> list[str]:
     for language in LANGUAGES:
         if language.grammar and load_grammar(language) is None:
             found.append(f"No tree-sitter grammar for {language.name}")
-        if language.tags and load_tags(language) is None:
-            found.append(f"No definition queries for {language.name}")
+        if language.tags:
+            found += _tags_problem(language)
         found += _highlighting_problem(language)
     return found + _xml_problem()
+
+
+# Loading the queries only reads their text; they are compiled when the outline is asked for.
+def _tags_problem(language: Language) -> list[str]:
+    tags = load_tags(language)
+    if tags is None:
+        return [f"No definition queries for {language.name}"]
+    try:
+        compile_query(*tags)
+    except Exception as error:
+        return [f"Definition queries for {language.name} do not compile: {error}"]
+    return []
 
 
 def _highlighting_problem(language: Language) -> list[str]:
