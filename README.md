@@ -3,6 +3,12 @@
 A terminal viewer for browsing code bases. It finds the project you point it at, shows an overview of it, lists the
 files as a tree, colors the code, shows the history from git, and is meant to be the tool you open a code base with.
 
+![A file with coverage marks in the margin, changed lines marked, and shares in the tree](docs/code.svg)
+
+![The overview of a project](docs/overview.svg)
+
+![The commit log with the diff of a commit](docs/log.svg)
+
 ## Requirements
 
 - Python 3.11 or later
@@ -10,10 +16,22 @@ files as a tree, colors the code, shows the history from git, and is meant to be
 - `rg` (ripgrep) is optional: it makes the search of the whole project fast and is needed for pattern search; without
   it the files are read in Python and the search is literal
 
+## Install
+
+Each release has a Debian package and a single-file executable for `amd64` and `arm64`. They are built on Debian 12
+and run on Debian 12 and later and on Ubuntu 22.04 and later, and need no Python.
+
+```sh
+sudo apt install ./spyc_0.1.0-1_amd64.deb     # brings git, and ripgrep as a recommendation
+chmod +x spyc-linux-amd64 && ./spyc-linux-amd64   # or the executable, which needs only git
+```
+
+The executable unpacks itself into a temporary directory on each start, so it starts a little slower than the
+installed package. From source, `pip install .` gives the `spyc` command.
+
 ## Usage
 
 ```sh
-pip install .
 spyc                       # the current directory
 spyc path/to/dir           # a directory
 spyc path/to/file.py:42    # a file, opened at line 42
