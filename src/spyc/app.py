@@ -126,6 +126,7 @@ class SpycApp(App):
         self.store = store or StateStore()
         self._coverage_files = tuple(coverage_files)
         self._coverage: Coverage | None = None
+        self._coverage_loading = False
         self._coverage_shown = bool(self.store.get("coverage", True))
         self.history = JumpHistory()
         self.overview: Overview | None = None
@@ -232,12 +233,20 @@ class SpycApp(App):
     def _coverage_ready(self, generation: int, coverage: Coverage, errors: list[str]) -> None:
         if generation != self._index_generation:
             return
+        self._coverage_loading = False
         self._coverage = coverage if coverage.files else None
         if self._coverage_files:
-            for error in errors:
-                self.notify(f"Coverage report skipped, {error}", severity="warning", markup=False)
+            self._say_what_the_named_reports_gave(coverage, errors)
         self._apply_coverage()
         self._refresh_status()
+
+    def _say_what_the_named_reports_gave(self, coverage: Coverage, errors: list[str]) -> None:
+        for error in errors:
+            self.notify(f"Coverage report skipped, {printable(error)}", severity="warning", markup=False)
+        if not coverage.files:
+            lost = coverage.unmatched
+            detail = f" ({lost} file{'s were' if lost != 1 else ' was'} not found)" if lost else ""
+            self.notify(f"No file of the project is in the coverage reports that were named{detail}", severity="warning")
 
     def _apply_coverage(self) -> None:
         coverage = self._coverage
@@ -260,9 +269,16 @@ class SpycApp(App):
             return ""
         return coverage_status(percent, self._coverage.is_stale(code.display_path, code.document.mtime))
 
+    def _why_no_coverage(self) -> str:
+        if self._coverage_loading:
+            return "Still reading the coverage reports"
+        if self._coverage_files:
+            return "The coverage reports that were named hold nothing for this project"
+        return "No coverage report found; run the tests with coverage or start spyc with --coverage FILE"
+
     def action_toggle_coverage(self) -> None:
         if self._coverage is None:
-            self.notify("No coverage report found; run the tests with coverage or start spyc with --coverage FILE")
+            self.notify(self._why_no_coverage())
             return
         self._coverage_shown = not self._coverage_shown
         self.store.set("coverage", self._coverage_shown)
@@ -274,6 +290,7 @@ class SpycApp(App):
             return
         self.overview, self._matcher, self._paths = overview, matcher, index.paths
         self._index_symbols(generation, index.paths)
+        self._coverage_loading = True
         self._load_coverage(generation, index.paths)
         self._tree.load(model)
         self._overview_pane.show(overview)
@@ -349,6 +366,10 @@ class SpycApp(App):
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.state is WorkerState.ERROR and event.worker.group == "index":
             self.notify(f"Could not read the project files: {event.worker.error}", severity="error", markup=False)
+        if event.state is WorkerState.ERROR and event.worker.group == "coverage":
+            self._coverage_loading = False
+            self.notify(f"Could not read the coverage reports: {printable(str(event.worker.error))}", severity="error",
+                        markup=False)
 
     def open_file(self, path: str, line: int | None = None, column: int = 0) -> None:
         leaving = self._current_place()
@@ -388,7 +409,8 @@ class SpycApp(App):
         self.open_file(message.path)
 
     def on_code_view_cursor_moved(self, message: CodeView.CursorMoved) -> None:
-        self._refresh_status()
+        if self.screen_stack:
+            self._refresh_status()
 
     def _refresh_status(self) -> None:
         code = self._code

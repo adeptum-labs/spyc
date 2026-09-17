@@ -55,10 +55,21 @@ class PathResolver:
         name = _normalized(reported)
         if not name:
             return None
-        for candidate in (name, *(f"{_normalized(source_root)}/{name}" for source_root in source_roots)):
+        directory = _normalized(report_directory) if report_directory else ""
+        for candidate in self._candidates(name, source_roots, directory):
             if (found := self._inside_project(candidate)) is not None:
                 return found
-        return self._by_suffix(name, _normalized(report_directory) if report_directory else "")
+        return self._by_suffix(name, directory)
+
+    # A relative path is most likely relative to where the report was made, so the
+    # directories of the report, the nearest first, come before the project root:
+    # the package of a monorepo has its own src/index.ts.
+    @staticmethod
+    def _candidates(name: str, source_roots: Sequence[str], directory: str) -> list[str]:
+        if name.startswith("/"):
+            return [name]
+        places = [directory.rsplit("/", depth)[0] for depth in range(directory.count("/") + 1)] if directory else []
+        return [*(f"{place}/{name}" for place in places), name, *(f"{_normalized(root)}/{name}" for root in source_roots)]
 
     def _inside_project(self, candidate: str) -> str | None:
         relative = candidate.removeprefix(self._prefix)
@@ -68,7 +79,8 @@ class PathResolver:
         length = len(name.split("/"))
         fitting = {path: min(length, len(path.split("/"))) for path in self._by_name.get(name.rpartition("/")[2], [])
                    if name == path or name.endswith(f"/{path}") or path.endswith(f"/{name}")}
-        best = [path for path in fitting if fitting[path] == max(fitting.values())]
+        longest = max(fitting.values(), default=0)
+        best = [path for path in fitting if fitting[path] == longest]
         if len(best) > 1:
             nearest = max(_shared_directories(path, report_directory) for path in best)
             best = [path for path in best if _shared_directories(path, report_directory) == nearest]

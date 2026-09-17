@@ -84,6 +84,8 @@ class Coverage:
         place = loaded.path.parent
         directory = place.relative_to(root).as_posix() if place.is_relative_to(root) else ""
         for reported, lines in loaded.report.files.items():
+            if not lines:
+                continue
             path = resolver.resolve(reported, loaded.report.source_roots, directory)
             if path is None:
                 self.unmatched += 1

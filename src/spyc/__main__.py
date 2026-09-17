@@ -62,11 +62,12 @@ def main(argv: list[str] | None = None) -> int:
     if not target.exists():
         print(f"spyc: {arguments.path}: no such file or directory", file=sys.stderr)
         return 2
-    coverage_files = [Path(name).expanduser().resolve() for name in arguments.coverage]
-    missing = next((name for name, path in zip(arguments.coverage, coverage_files) if not path.is_file()), None)
+    named = {name: Path(name).expanduser().resolve() for name in arguments.coverage}
+    missing = next((name for name, path in named.items() if not path.is_file()), None)
     if missing is not None:
         print(f"spyc: --coverage {missing}: no such file", file=sys.stderr)
         return 2
+    coverage_files = list(dict.fromkeys(named.values()))
     root = find_root(target)
     try:
         relative = target.relative_to(root).as_posix()

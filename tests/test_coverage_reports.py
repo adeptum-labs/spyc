@@ -24,7 +24,7 @@ import pytest
 
 from repos import write_files
 from spyc.coverage.model import CoverageLine, ReportError
-from spyc.coverage.reports import MAX_DEPTH, find_reports, load_report, parse_report
+from spyc.coverage.reports import MAX_DEPTH, find_reports, load_report, load_reports, parse_report
 
 LCOV = "TN:\nSF:a.js\nDA:1,1\nend_of_record\n"
 GO = "mode: set\nx.com/a.go:1.1,2.1 1 1\n"
@@ -86,3 +86,83 @@ def test_a_huge_tree_is_given_up_on_after_a_bounded_number_of_entries(tmp_path, 
     write_files(tmp_path, {f"d{index}/lcov.info": "x" for index in range(20)})
     monkeypatch.setattr("spyc.coverage.reports.MAX_ENTRIES", 25)
     assert 0 < len(find_reports(tmp_path)) < 20
+
+
+def test_a_report_that_fails_in_an_unexpected_way_is_reported_and_the_others_still_load(tmp_path, monkeypatch):
+    write_files(tmp_path, {"good.info": LCOV, "bad.info": LCOV})
+    real = load_report_function()
+
+    def load(path):
+        if path.name == "bad.info":
+            raise RuntimeError("boom")
+        return real(path)
+
+    monkeypatch.setattr("spyc.coverage.reports.load_report", load)
+    reports, errors = load_reports([tmp_path / "bad.info", tmp_path / "good.info"])
+    assert [report.path.name for report in reports] == ["good.info"] and errors == ["bad.info: boom"]
+
+
+def load_report_function():
+    return load_report
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read what a mode forbids")
+def test_a_report_named_link_into_a_directory_that_cannot_be_read_does_not_stop_the_search(tmp_path):
+    (tmp_path / "locked").mkdir()
+    (tmp_path / "locked" / "cover.out").write_text("x")
+    (tmp_path / "cover.out").symlink_to("locked/cover.out")
+    (tmp_path / "lcov.info").write_text("x")
+    (tmp_path / "locked").chmod(0)
+    try:
+        assert [path.name for path in find_reports(tmp_path)] == ["lcov.info"]
+    finally:
+        (tmp_path / "locked").chmod(0o755)
+
+
+def test_a_report_may_not_be_bigger_than_what_can_be_held_in_memory_at_once():
+    from spyc.coverage.reports import MAX_REPORT_BYTES
+    assert MAX_REPORT_BYTES <= 50 * 1024 * 1024
+
+
+def test_shallow_reports_are_found_before_a_huge_sibling_tree_uses_up_the_search(tmp_path, monkeypatch):
+    write_files(tmp_path, {"coverage/lcov.info": "x", **{f"obj/f{index}": "x" for index in range(40)},
+                           **{f"out/f{index}": "x" for index in range(40)}})
+    monkeypatch.setattr("spyc.coverage.reports.MAX_ENTRIES", 30)
+    assert [path.relative_to(tmp_path).as_posix() for path in find_reports(tmp_path)] == ["coverage/lcov.info"]
+
+
+def test_one_huge_directory_is_not_listed_in_full(tmp_path, monkeypatch):
+    write_files(tmp_path, {**{f"f{index}": "x" for index in range(200)}, "lcov.info": "x"})
+    monkeypatch.setattr("spyc.coverage.reports.MAX_ENTRIES", 20)
+    real = os.scandir
+    listed = []
+
+    def counting(path):
+        entries = real(path)
+        return CountingEntries(entries, listed)
+
+    monkeypatch.setattr("spyc.coverage.reports.os.scandir", counting)
+    find_reports(tmp_path)
+    assert len(listed) <= 21
+
+
+class CountingEntries:
+    def __init__(self, entries, listed):
+        self._entries, self._listed = entries, listed
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *arguments):
+        self._entries.close()
+
+    def __iter__(self):
+        for entry in self._entries:
+            self._listed.append(entry.name)
+            yield entry
+
+
+@pytest.mark.parametrize("name", ["coverage.cobertura.xml", "unit.cobertura.xml", "COVERAGE.XML"])
+def test_the_names_that_the_common_tools_write_are_found(tmp_path, name):
+    (tmp_path / name).write_text("x")
+    assert [path.name for path in find_reports(tmp_path)] == [name]

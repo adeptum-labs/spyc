@@ -97,3 +97,10 @@ def test_version_flag_prints_the_package_version(capsys):
         main(["--version"])
     assert exit_info.value.code == 0
     assert capsys.readouterr().out.strip() == f"spyc {importlib.metadata.version('spyc')}"
+
+
+def test_a_report_named_twice_is_passed_on_once(git_repo, recorded, monkeypatch):
+    (git_repo / "one.info").write_text("x")
+    monkeypatch.chdir(git_repo)
+    entry.main([str(git_repo), "--coverage", "one.info", "--coverage", str(git_repo / "one.info")])
+    assert RecordingApp.coverage_files == [(git_repo / "one.info").resolve()]

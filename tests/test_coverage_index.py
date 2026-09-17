@@ -96,3 +96,8 @@ def test_the_shares_of_all_files_and_directories_can_be_listed_for_the_tree():
     coverage = build(loaded({"src/a.py": A_LINES, "src/sub/c.py": {1: CoverageLine(1)}, "lib/d.py": {}}))
     assert coverage.file_percents() == {"src/a.py": 50.0, "src/sub/c.py": 100.0}
     assert coverage.directory_percents() == {"src": 100 * 3 / 5, "src/sub": 100.0}
+
+
+def test_a_file_the_report_lists_without_any_line_is_no_coverage_and_not_unmatched():
+    coverage = build(loaded({"src/a.py": {}, "nowhere.py": {}}))
+    assert coverage.files == {} and coverage.unmatched == 0

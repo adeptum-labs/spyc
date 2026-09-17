@@ -18,6 +18,7 @@
 # Contact: info@adeptum.se
 
 
+import time
 from pathlib import Path
 
 import pytest
@@ -65,3 +66,19 @@ def test_the_place_of_the_report_breaks_a_tie_and_when_that_does_not_the_name_st
         "b/src/main/java/com/acme/Shared.java"
     assert resolver.resolve("com/acme/Shared.java", report_directory="c/build") is None
     assert resolver.resolve("com/acme/Shared.java") is None
+
+
+def test_a_path_relative_to_the_place_of_the_report_beats_the_same_path_at_the_root():
+    resolver = PathResolver(ROOT, ("src/index.ts", "packages/foo/src/index.ts", "packages/bar/src/index.ts"))
+    assert resolver.resolve("src/index.ts", report_directory="packages/foo/coverage") == "packages/foo/src/index.ts"
+    assert resolver.resolve("src/index.ts", report_directory="packages/bar") == "packages/bar/src/index.ts"
+    assert resolver.resolve("src/index.ts", report_directory="coverage") == "src/index.ts"
+    assert resolver.resolve("src/index.ts") == "src/index.ts"
+
+
+def test_a_name_that_many_files_share_is_resolved_without_a_quadratic_search():
+    resolver = PathResolver(ROOT, [f"pkg{index}/index.js" for index in range(3000)])
+    started = time.perf_counter()
+    for _ in range(20):
+        assert resolver.resolve("index.js") is None
+    assert time.perf_counter() - started < 1

@@ -18,6 +18,8 @@
 # Contact: info@adeptum.se
 
 
+import time
+
 from spyc.coverage.gocover import parse_gocover
 from spyc.coverage.model import CoverageLine
 
@@ -41,3 +43,16 @@ def test_a_block_covers_the_lines_it_spans_and_a_line_of_covered_and_missed_bloc
 def test_lines_that_are_not_blocks_are_ignored_and_the_mode_line_is_optional():
     text = "garbage\nc.go:2.1,x.1 1 1\nc.go:2.1,2.9 1 1\r\n\nc.go:9.1,8.1 1 1\n"
     assert parse_gocover(text).files == {"c.go": {2: CoverageLine(1)}}
+
+
+def test_a_block_that_claims_a_huge_number_of_lines_is_refused_instead_of_expanded():
+    started = time.perf_counter()
+    report = parse_gocover("mode: set\na.go:1.1,100000000.1 1 1\nb.go:1.1,2.1 1 1\n")
+    assert report.files == {"b.go": {1: CoverageLine(1), 2: CoverageLine(1)}}
+    assert time.perf_counter() - started < 2
+
+
+def test_a_report_stops_expanding_lines_once_its_budget_is_spent(monkeypatch):
+    monkeypatch.setattr("spyc.coverage.gocover.MAX_EXPANDED_LINES", 10)
+    text = "".join(f"f{index}.go:1.1,6.1 1 1\n" for index in range(5))
+    assert sum(len(lines) for lines in parse_gocover(text).files.values()) <= 12

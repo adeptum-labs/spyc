@@ -18,44 +18,45 @@
 # Contact: info@adeptum.se
 
 
-from spyc.coverage.model import CoverageLine, Lines, Report, add_line
+from spyc.coverage.model import CoverageLine, Lines, Report, add_line, merge_lines, number_of
 
 
-# Records start at SF: and end at end_of_record. DA:line,hits[,checksum] says how
-# often a line ran; BRDA:line,block,branch,taken has "-" or 0 for a branch never taken.
+# Records start at SF: and end at end_of_record, or at the next SF:. DA:line,hits[,checksum]
+# says how often a line ran; BRDA:line,block,branch,taken has "-" or 0 for a branch never
+# taken. Each record is read on its own and then merged into its file, so what one record
+# says about branches never spills into another record or another file.
 def parse_lcov(text: str) -> Report:
     files: dict[str, Lines] = {}
-    lines: Lines | None = None
+    name: str | None = None
+    record: Lines = {}
     partial: set[int] = set()
-    for row in text.splitlines():
+    for row in [*text.removeprefix("\ufeff").splitlines(), "end_of_record"]:
         tag, _, value = row.partition(":")
-        if tag == "SF":
-            lines = files.setdefault(value, {})
-        elif tag == "DA" and lines is not None:
-            _add_line(lines, value)
-        elif tag == "BRDA" and lines is not None:
+        if tag in ("SF", "end_of_record"):
+            if name is not None and record:
+                files[name] = merge_lines(files.get(name, {}), _with_partial_lines(record, partial))
+            name, record, partial = (value if tag == "SF" else None), {}, set()
+        elif name is not None and tag == "DA":
+            _add_line(record, value)
+        elif name is not None and tag == "BRDA":
             _note_branch(partial, value)
-        elif tag == "end_of_record" and lines is not None:
-            _close_record(lines, partial)
-            lines = None
     return Report("LCOV", files)
 
 
 def _add_line(lines: Lines, value: str) -> None:
     fields = value.split(",")
-    if len(fields) < 2 or not fields[0].isdigit() or not fields[1].isdigit():
-        return
-    add_line(lines, int(fields[0]), CoverageLine(int(fields[1])))
+    number, hits = (number_of(field) for field in fields[:2]) if len(fields) >= 2 else (None, None)
+    if number is not None and hits is not None:
+        add_line(lines, number, CoverageLine(hits))
 
 
 def _note_branch(partial: set[int], value: str) -> None:
     fields = value.split(",")
-    if len(fields) == 4 and fields[0].isdigit() and fields[3] in ("-", "0"):
-        partial.add(int(fields[0]))
+    number = number_of(fields[0]) if len(fields) == 4 and fields[3] in ("-", "0") else None
+    if number is not None:
+        partial.add(number)
 
 
-def _close_record(lines: Lines, partial: set[int]) -> None:
-    for number in partial & lines.keys():
-        if lines[number].hits > 0:
-            lines[number] = CoverageLine(lines[number].hits, partial=True)
-    partial.clear()
+def _with_partial_lines(record: Lines, partial: set[int]) -> Lines:
+    return {number: CoverageLine(line.hits, partial=number in partial and line.hits > 0)
+            for number, line in record.items()}

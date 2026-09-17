@@ -75,3 +75,10 @@ def test_a_line_without_a_number_or_hits_is_skipped():
            '<line number="x" hits="1"/><line hits="1"/><line number="2"/><line number="3" hits="1"/>' \
            '</lines></class></classes></package></packages></coverage>'
     assert parse_cobertura(text).files == {"a.py": {3: CoverageLine(1)}}
+
+
+def test_digits_that_int_cannot_read_are_skipped_not_fatal():
+    text = '<coverage><packages><package><classes><class filename="a.py"><lines>' \
+           '<line number="\u00b2" hits="1"/><line number="1" hits="\u00b2"/><line number="2" hits="1"/>' \
+           '</lines></class></classes></package></packages></coverage>'
+    assert parse_cobertura(text).files == {"a.py": {2: CoverageLine(1)}}

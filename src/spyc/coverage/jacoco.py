@@ -20,15 +20,17 @@
 
 from xml.etree.ElementTree import Element
 
-from spyc.coverage.model import CoverageLine, Lines, Report
+from spyc.coverage.model import CoverageLine, Lines, Report, number_of
 from spyc.coverage.safe_xml import parse_xml
 
 
 # JaCoCo counts instructions and branches per line: a line ran if any of its
-# instructions did, and is partial if some of its branches did not.
+# instructions did, and is partial, yellow in JaCoCo's own reports, if some of
+# its instructions or branches did not. An aggregated report keeps its packages
+# in groups, at any depth.
 def parse_jacoco(text: str) -> Report:
     files: dict[str, Lines] = {}
-    for package in parse_xml(text, "report").iterfind("./package"):
+    for package in parse_xml(text, "report").iter("package"):
         for source in package.iterfind("./sourcefile"):
             lines = _lines_of(source)
             if lines:
@@ -39,7 +41,8 @@ def parse_jacoco(text: str) -> Report:
 def _lines_of(source: Element) -> Lines:
     lines: Lines = {}
     for element in source.iterfind("./line"):
-        number, missed, covered, missed_branches = (element.get(name, "") for name in ("nr", "mi", "ci", "mb"))
-        if number.isdigit() and missed.isdigit() and covered.isdigit() and int(missed) + int(covered) > 0:
-            lines[int(number)] = CoverageLine(int(covered), int(covered) > 0 and missed_branches not in ("", "0"))
+        number, missed, covered = (number_of(element.get(name, "")) for name in ("nr", "mi", "ci"))
+        missed_branches = number_of(element.get("mb", "")) or 0
+        if None not in (number, missed, covered) and missed + covered > 0:
+            lines[number] = CoverageLine(covered, covered > 0 and (missed > 0 or missed_branches > 0))
     return lines

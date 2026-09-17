@@ -39,3 +39,7 @@ def test_a_line_that_one_report_covered_fully_is_not_partial_after_the_merge():
     assert merge_lines({1: partial}, {1: partial})[1] == CoverageLine(2, partial=True)
     assert merge_lines({1: partial}, {1: missed})[1] == CoverageLine(2, partial=True)
     assert merge_lines({1: missed}, {1: missed})[1] == CoverageLine(0)
+
+
+def test_a_line_takes_no_more_memory_than_its_two_fields():
+    assert not hasattr(CoverageLine(1), "__dict__")

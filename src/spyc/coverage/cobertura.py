@@ -20,7 +20,7 @@
 
 from xml.etree.ElementTree import Element
 
-from spyc.coverage.model import CoverageLine, Lines, Report, add_line
+from spyc.coverage.model import CoverageLine, Lines, Report, add_line, number_of
 from spyc.coverage.safe_xml import parse_xml
 
 
@@ -36,14 +36,13 @@ def parse_cobertura(text: str) -> Report:
 
 
 def _add_line(lines: Lines, element: Element) -> None:
-    number, hits = element.get("number", ""), element.get("hits", "")
-    if not number.isdigit() or not hits.isdigit():
-        return
-    partial = int(hits) > 0 and _misses_a_branch(element.get("condition-coverage", ""))
-    add_line(lines, int(number), CoverageLine(int(hits), partial))
+    number, hits = number_of(element.get("number", "")), number_of(element.get("hits", ""))
+    if number is not None and hits is not None:
+        add_line(lines, number, CoverageLine(hits, hits > 0 and _misses_a_branch(element.get("condition-coverage", ""))))
 
 
 # "50% (1/2)": one of two conditions was taken.
 def _misses_a_branch(condition_coverage: str) -> bool:
     taken, _, total = condition_coverage.partition("(")[2].rstrip(")").partition("/")
-    return taken.isdigit() and total.isdigit() and int(taken) < int(total)
+    taken, total = number_of(taken), number_of(total)
+    return taken is not None and total is not None and taken < total

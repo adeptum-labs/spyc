@@ -62,3 +62,21 @@ def test_lines_without_any_instruction_and_broken_numbers_are_skipped():
 def test_text_that_is_not_a_safe_jacoco_report_is_an_error(text):
     with pytest.raises(ReportError):
         parse_jacoco(text)
+
+
+def test_the_packages_of_an_aggregated_report_inside_groups_are_read():
+    text = '<report><group name="all"><group name="module-a"><package name="p"><sourcefile name="A.java">' \
+           '<line nr="1" mi="0" ci="1"/></sourcefile></package></group></group></report>'
+    assert parse_jacoco(text).files == {"p/A.java": {1: CoverageLine(1)}}
+
+
+def test_a_line_where_only_some_instructions_ran_is_partial_as_in_jacocos_own_colors():
+    text = '<report><package name="p"><sourcefile name="A.java"><line nr="1" mi="5" ci="4" mb="0" cb="0"/>' \
+           '<line nr="2" mi="0" ci="4" mb="0" cb="0"/><line nr="3" mi="4" ci="0"/></sourcefile></package></report>'
+    assert parse_jacoco(text).files["p/A.java"] == {1: CoverageLine(4, partial=True), 2: CoverageLine(4), 3: CoverageLine(0)}
+
+
+def test_digits_that_int_cannot_read_are_skipped_not_fatal():
+    text = '<report><package name="p"><sourcefile name="A.java"><line nr="\u00b2" mi="0" ci="1"/>' \
+           '<line nr="1" mi="0" ci="1"/></sourcefile></package></report>'
+    assert parse_jacoco(text).files == {"p/A.java": {1: CoverageLine(1)}}

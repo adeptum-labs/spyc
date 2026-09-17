@@ -88,7 +88,7 @@ commit. The mouse works too: click to place the cursor, scroll to move.
 spyc reads LCOV, Cobertura, JaCoCo XML and Go cover profiles. Reports are recognised by their content and looked for by
 their usual names (`lcov.info`, `coverage.xml`, `jacoco.xml`, `jacocoTestReport.xml`, `cover.out` and so on) up to six
 directories down, build output included; `--coverage FILE` names them instead. Several reports of a project are merged,
-and a line counts as often as its most thorough report says.
+and a line counts as often as its most thorough report says. Reports are read whole, so one over 32 MB is skipped.
 
 In the margin a filled circle (green) is a line that ran, a half one (yellow) a line where some branch was never taken,
 and an empty one (red) a line that never ran. The status bar gives the share of the lines of the open file that ran,

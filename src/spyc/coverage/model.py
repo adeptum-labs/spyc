@@ -22,13 +22,14 @@ from dataclasses import dataclass
 
 
 # A line that runs code. `partial` says that some branch of it was never taken.
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class CoverageLine:
     hits: int
     partial: bool = False
 
 
 Lines = dict[int, CoverageLine]
+MAX_DIGITS = 15
 
 
 @dataclass(frozen=True)
@@ -50,8 +51,16 @@ def merge_line(first: CoverageLine, second: CoverageLine) -> CoverageLine:
     return CoverageLine(max(first.hits, second.hits), bool(ran) and all(ran))
 
 
+# str.isdigit accepts characters int cannot read, and int refuses more than a few
+# thousand digits; a number in a report is ASCII and reasonably short, or not read.
+def number_of(text: str) -> int | None:
+    return int(text) if text.isascii() and text.isdigit() and len(text) <= MAX_DIGITS else None
+
+
+# Line numbers count from 1; a report that names line 0 means no line.
 def add_line(lines: Lines, number: int, line: CoverageLine) -> None:
-    lines[number] = merge_line(lines[number], line) if number in lines else line
+    if number >= 1:
+        lines[number] = merge_line(lines[number], line) if number in lines else line
 
 
 def merge_lines(first: Lines, second: Lines) -> Lines:
