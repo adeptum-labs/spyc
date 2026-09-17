@@ -26,6 +26,7 @@ from pathlib import Path
 from spyc.app import SpycApp
 from spyc.location import Location, parse_location
 from spyc.project import find_root
+from spyc.selftest import problems
 from spyc.state import configure_logging
 
 DESCRIPTION = "Terminal viewer for browsing code bases: syntax colors, git history and coverage."
@@ -38,12 +39,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--coverage", action="append", default=[], metavar="FILE",
                         help="coverage report to show (LCOV, Cobertura, JaCoCo or Go), may be given more than once; "
                              "the reports of the project are looked for when there is none")
+    parser.add_argument("--self-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--version", action="version", version=f"spyc {importlib.metadata.version('spyc')}")
     return parser
 
 
+def self_test() -> int:
+    found = problems()
+    for problem in found:
+        print(f"spyc: {problem}", file=sys.stderr)
+    if not found:
+        print("spyc: self-test passed")
+    return 1 if found else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
+    if arguments.self_test:
+        return self_test()
     location = parse_location(arguments.path)
     target = Path(location.path).expanduser().resolve()
     if not target.exists():
