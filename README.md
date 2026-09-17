@@ -7,6 +7,7 @@ files as a tree, colors the code, shows the history from git, and is meant to be
 
 - Python 3.11 or later
 - `git` on the path (lists the files of a project and gives the history, changes and blame)
+- `rg` (ripgrep) is optional: it makes the search of the whole project fast, and without it the files are read in Python
 
 ## Usage
 
@@ -26,6 +27,10 @@ the build systems and the key files, such as the README, the build files, the CI
 | Keys | What they do |
 |---|---|
 | `f` | Find a file by name; `name:line` jumps to a line |
+| `s` | Search the text of the project (ripgrep when installed); `alt+r` for a pattern, `alt+w` for whole words |
+| `o` | Outline: the definitions of the open file |
+| `t` | Find a definition anywhere in the project |
+| `d` | Go to the definition of the name under the cursor, the nearest first; `[` comes back |
 | `/` | Find in the file; `n` and `N` step through the matches |
 | `:` | Go to a line |
 | `[` `]` | Back and forward through the files you have visited |
@@ -56,7 +61,8 @@ commit. The mouse works too: click to place the cursor, scroll to move.
 
 ## Colors
 
-The code is colored with tree-sitter grammars for Bash, C, C++, CSS, Go, HTML, Java, JavaScript, JSON, Kotlin,
+Outline and go-to-definition know the definitions of Python, Java, Kotlin, Go, Rust, JavaScript, TypeScript, C, C++,
+Bash and Markdown headings. The code is colored with tree-sitter grammars for Bash, C, C++, CSS, Go, HTML, Java, JavaScript, JSON, Kotlin,
 Python, Rust, SCSS, SQL, TOML, TSX, TypeScript, XML and YAML. Other languages are colored with Pygments. The theme
 follows the one chosen in the command palette and is remembered.
 

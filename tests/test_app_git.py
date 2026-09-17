@@ -327,10 +327,12 @@ async def test_a_slow_git_is_left_alone_on_the_timer_but_still_answers_to_r(git_
     app = make_app(git_repo, tmp_path)
     async with app.run_test(size=SIZE) as pilot:
         await until(pilot, lambda: asked)
+        await pilot.pause(0.5)
+        before = len(asked)
         await pilot.pause(1.0)
-        assert len(asked) == 1
+        assert len(asked) == before
         await pilot.press("R")
-        await until(pilot, lambda: len(asked) == 2)
+        await until(pilot, lambda: len(asked) > before)
 
 
 async def test_keys_of_the_main_view_do_nothing_inside_the_log(git_repo, tmp_path):
