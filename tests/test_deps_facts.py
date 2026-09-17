@@ -1,0 +1,40 @@
+# spyc is a terminal viewer for browsing code bases.
+# Copyright © 2026 Adam Waldenberg, Adeptum AB, Org.nr 559494-1824.
+#
+# This program is free software: you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the Free
+# Software Foundation, either version 3 of the License, or (at your option)
+# any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+# or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+# more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# Website: https://www.adeptum.se
+# Contact: info@adeptum.se
+
+
+import pytest
+
+from spyc.deps.facts import ClassDef, FileFacts, Import, facts_from_json, facts_to_json
+
+FACTS = FileFacts("com.acme", (ClassDef("A", 3), ClassDef("B", 9)), (Import("x.Y"), Import("x", wildcard=True, static=True)),
+                  frozenset({"Y", "Z"}))
+
+
+def test_facts_survive_a_round_trip_through_json_and_the_json_is_stable():
+    data = facts_to_json(FACTS)
+    assert facts_from_json(data) == FACTS
+    assert facts_to_json(facts_from_json(data)) == data
+    assert data["used"] == ["Y", "Z"]
+
+
+@pytest.mark.parametrize("data", [{}, {"unit": 1}, {"unit": "", "classes": [[1]], "imports": [], "used": []},
+                                  {"unit": "", "classes": [], "imports": [["a"]], "used": []}])
+def test_facts_that_are_not_facts_raise_the_errors_the_cache_reader_handles(data):
+    with pytest.raises((KeyError, ValueError, TypeError)):
+        facts_from_json(data)

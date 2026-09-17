@@ -46,15 +46,18 @@ def symbols_of(text: str, language: Language | None) -> list[Symbol]:
     if language is None:
         return []
     if language.id == "markdown":
-        return _headings(text)
+        return headings_of(text)
     loaded = load_tags(language)
     return [] if loaded is None else _definitions(text, *loaded)
 
 
 def _definitions(text: str, ts_language, query_source: str) -> list[Symbol]:
     data = text.encode("utf-8")
+    return definitions_in(data, Parser(ts_language).parse(data), ts_language, query_source)
+
+
+def definitions_in(data: bytes, tree, ts_language, query_source: str) -> list[Symbol]:
     lines = data.split(b"\n")
-    tree = Parser(ts_language).parse(data)
     kinds: dict[tuple[str, int, int], str] = {}
     ascii_rows: dict[int, bool] = {}
     for _, captures in QueryCursor(compile_query(ts_language, query_source)).matches(tree.root_node):
@@ -75,7 +78,7 @@ def _definitions(text: str, ts_language, query_source: str) -> list[Symbol]:
 
 
 # Markdown has no grammar here; its headings, outside fenced code, are its outline.
-def _headings(text: str) -> list[Symbol]:
+def headings_of(text: str) -> list[Symbol]:
     symbols: list[Symbol] = []
     fence: tuple[str, int] | None = None
     for number, line in enumerate(text.split("\n"), 1):
