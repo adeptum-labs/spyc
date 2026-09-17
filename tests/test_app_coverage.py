@@ -24,6 +24,7 @@ from repos import write_files
 from spyc.app import SpycApp
 from spyc.state import StateStore
 from spyc.widgets.code_view import CodeView
+from spyc.widgets.file_tree import FileTree
 from spyc.widgets.status_bar import StatusBar
 from waiting import until
 
@@ -125,3 +126,19 @@ async def test_a_file_changed_after_its_report_is_called_stale(project, tmp_path
     async with app.run_test(size=SIZE) as pilot:
         await opened(pilot)
         await until(pilot, lambda: "coverage 50% (stale)" in app.query_one(StatusBar).text)
+
+
+def tree_labels(app):
+    return [str(node.label) for node in app.query_one(FileTree).root.children]
+
+
+async def test_the_tree_and_the_overview_give_the_shares_and_c_takes_the_tree_ones_away(project, tmp_path):
+    write_files(project, {"coverage/lcov.info": LCOV})
+    app = make_app(project, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        assert "src 50%" in tree_labels(app)
+        assert app.query_one("#coverage").render().plain.startswith("Coverage 50% · 1 of 2 lines · LCOV")
+        await pilot.press("c")
+        await pilot.pause()
+        assert "src" in tree_labels(app) and app.query_one("#coverage").display

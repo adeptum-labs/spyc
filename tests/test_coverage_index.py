@@ -90,3 +90,9 @@ def test_load_reports_keeps_the_ones_that_read_and_tells_why_the_others_did_not(
     reports, errors = load_reports([tmp_path / "lcov.info", tmp_path / "coverage.xml", tmp_path / "gone.info"])
     assert [report.report.format for report in reports] == ["LCOV"] and reports[0].mtime > 0
     assert len(errors) == 2 and errors[0].startswith("coverage.xml") and errors[1].startswith("gone.info")
+
+
+def test_the_shares_of_all_files_and_directories_can_be_listed_for_the_tree():
+    coverage = build(loaded({"src/a.py": A_LINES, "src/sub/c.py": {1: CoverageLine(1)}, "lib/d.py": {}}))
+    assert coverage.file_percents() == {"src/a.py": 50.0, "src/sub/c.py": 100.0}
+    assert coverage.directory_percents() == {"src": 100 * 3 / 5, "src/sub": 100.0}

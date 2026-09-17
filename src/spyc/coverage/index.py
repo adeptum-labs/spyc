@@ -43,6 +43,7 @@ class Coverage:
     formats: tuple[str, ...] = ()
     unmatched: int = 0
     _oldest: dict[str, float] = field(default_factory=dict)
+    _file_counts: dict[str, tuple[int, int]] = field(default_factory=dict)
     _directories: dict[str, tuple[int, int]] = field(default_factory=dict)
 
     @classmethod
@@ -60,10 +61,17 @@ class Coverage:
         return self.files.get(path)
 
     def file_percent(self, path: str) -> float | None:
-        return _percent(counts(self.files[path])) if path in self.files else None
+        return _percent(self._file_counts[path]) if path in self._file_counts else None
 
     def directory_percent(self, directory: str) -> float | None:
         return _percent(self._directories.get(directory, (0, 0)))
+
+    def file_percents(self) -> dict[str, float]:
+        return {path: percent for path in self.files if (percent := self.file_percent(path)) is not None}
+
+    def directory_percents(self) -> dict[str, float]:
+        return {directory: percent for directory in self._directories
+                if directory and (percent := self.directory_percent(directory)) is not None}
 
     @property
     def total(self) -> tuple[int, int]:
@@ -85,7 +93,7 @@ class Coverage:
 
     def _roll_up(self) -> None:
         for path, lines in self.files.items():
-            covered, total = counts(lines)
+            covered, total = self._file_counts[path] = counts(lines)
             directory = posixpath.dirname(path)
             while True:
                 before = self._directories.get(directory, (0, 0))

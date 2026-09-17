@@ -149,3 +149,15 @@ async def test_directory_marks_that_were_worked_out_elsewhere_are_used_as_given(
         tree = pilot.app.query_one(FileTree)
         tree.set_status({}, {"docs": "M"})
         assert labels(tree.root.children)[0] == "docs M"
+
+
+async def test_coverage_shares_follow_the_names_of_files_and_directories_and_can_be_cleared():
+    async with TreeApp().run_test() as pilot:
+        tree = pilot.app.query_one(FileTree)
+        tree.set_coverage({"README.md": 83.4, "src/main/java/A.java": 10.0}, {"src": 50.0})
+        assert labels(tree.root.children) == ["docs", "src 50%", "README.md 83%", "Zed.txt"]
+        await pilot.press("j", "right", "right", "right")
+        assert labels(tree.cursor_node.children) == ["A.java 10%", "B.java"]
+        tree.set_coverage({}, {})
+        assert labels(tree.root.children) == ["docs", "src", "README.md", "Zed.txt"]
+        assert labels(tree.cursor_node.children) == ["A.java", "B.java"]

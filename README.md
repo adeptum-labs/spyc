@@ -17,6 +17,7 @@ pip install .
 spyc                       # the current directory
 spyc path/to/dir           # a directory
 spyc path/to/file.py:42    # a file, opened at line 42
+spyc --coverage lcov.info  # show what a coverage report says; may be given more than once
 ```
 
 `spyc` opens at the root of the project that contains the path: the git top level, or else the nearest directory with
@@ -39,6 +40,7 @@ the build systems and the key files, such as the README, the build files, the CI
 | `L` | History of the open file, following renames |
 | `g` | All uncommitted changes, staged or not, and new files, as one diff |
 | `b` | Show who last changed each line; `Enter` on a line opens that commit |
+| `c` | Show or hide what the tests ran, from the coverage reports |
 | `e` | Edit in `$VISUAL` or `$EDITOR` at the cursor line |
 | `p` | Copy `path:line` to the clipboard |
 | `i` | Project overview |
@@ -62,6 +64,20 @@ Bash and Markdown headings.
 In a git repository the tree marks changed files and their directories, the code view marks added, changed and
 deleted lines in the margin, and the overview and the title tell the branch, the number of changes and the last
 commit. The mouse works too: click to place the cursor, scroll to move.
+
+## Coverage
+
+spyc reads LCOV, Cobertura, JaCoCo XML and Go cover profiles. Reports are recognised by their content and looked for by
+their usual names (`lcov.info`, `coverage.xml`, `jacoco.xml`, `jacocoTestReport.xml`, `cover.out` and so on) up to six
+directories down, build output included; `--coverage FILE` names them instead. Several reports of a project are merged,
+and a line counts as often as its most thorough report says.
+
+In the margin a filled circle (green) is a line that ran, a half one (yellow) a line where some branch was never taken,
+and an empty one (red) a line that never ran. The status bar gives the share of the lines of the open file that ran,
+and says `(stale)` when the file is newer than its report. The tree shows the share after each file and directory,
+and the overview the total. `c` hides and shows the margin and the tree shares, and the choice is remembered. The
+paths of a report may be relative, absolute in another checkout, Java package paths or Go import paths; they are
+matched to the files of the project by their ends. Reports are read again with `R`.
 
 ## Colors
 

@@ -240,6 +240,14 @@ class SpycApp(App):
         self._refresh_status()
 
     def _apply_coverage(self) -> None:
+        coverage = self._coverage
+        shown = coverage is not None and self._coverage_shown
+        files, directories = (coverage.file_percents(), coverage.directory_percents()) if shown else ({}, {})
+        self._tree.set_coverage(files, directories)
+        self._overview_pane.show_coverage(coverage)
+        self._mark_lines()
+
+    def _mark_lines(self) -> None:
         code = self._code
         if code.document is None:
             return
@@ -363,7 +371,7 @@ class SpycApp(App):
         self.store.add_recent_file(self.project_root, path)
         self._tree.reveal(path)
         code.focus()
-        self._apply_coverage()
+        self._mark_lines()
         self._refresh_changes()
         self._refresh_blame()
         return True
@@ -607,7 +615,7 @@ class SpycApp(App):
         except OSError:
             return
         code.replace(document)
-        self._apply_coverage()
+        self._mark_lines()
         self._refresh_git()
         self._refresh_blame()
         if self._rendered.display:

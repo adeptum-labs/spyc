@@ -81,3 +81,20 @@ async def test_the_status_bar_shows_brackets_in_a_path_as_they_are(tmp_path):
         bar.show("app/[id]/page.tsx", "TSX", 0, 0, 1)
         await pilot.pause()
         assert bar.render().plain.startswith("app/[id]/page.tsx")
+
+
+async def test_the_coverage_of_the_project_is_shown_when_there_is_some(tmp_path):
+    from pathlib import Path
+    from spyc.coverage.index import Coverage
+    from spyc.coverage.model import CoverageLine, Report
+    from spyc.coverage.reports import LoadedReport
+    app = PaneApp(overview_of(tmp_path, {"a.py": "x"}))
+    async with app.run_test(size=(100, 30)):
+        pane = app.query_one(OverviewPane)
+        line = pane.query_one("#coverage")
+        assert not line.display
+        report = LoadedReport(tmp_path / "lcov.info", 1.0, Report("LCOV", {"a.py": {1: CoverageLine(1)}}))
+        pane.show_coverage(Coverage.build(tmp_path, ("a.py",), [report]))
+        assert line.display and line.render().plain.startswith("Coverage 100% · 1 of 1 lines · LCOV")
+        pane.show_coverage(None)
+        assert not line.display

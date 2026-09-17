@@ -26,6 +26,8 @@ from textual.containers import VerticalScroll
 from textual.widgets import Label, OptionList, Static
 from textual.widgets.option_list import Option
 
+from spyc.coverage.index import Coverage
+from spyc.coverage.text import summary_text as coverage_summary
 from spyc.git.summary import GitSummary
 from spyc.git.summary import summary_text as git_summary_text
 from spyc.overview import Overview, summary_text
@@ -36,7 +38,7 @@ from spyc.widgets.file_tree import FileTree
 class OverviewPane(VerticalScroll):
     DEFAULT_CSS = """
     OverviewPane { padding: 1 2; }
-    OverviewPane #git { display: none; margin-top: 1; }
+    OverviewPane #coverage, OverviewPane #git { display: none; margin-top: 1; }
     OverviewPane .heading { margin-top: 1; text-style: bold; }
     OverviewPane OptionList { height: auto; max-height: 12; border: none; background: transparent; }
     OverviewPane #readme { margin-top: 1; color: $text-muted; }
@@ -48,6 +50,7 @@ class OverviewPane(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         yield Static(id="summary")
+        yield Static(id="coverage")
         yield Static(id="git")
         yield Label("Key files", classes="heading", id="key-files-heading")
         yield OptionList(id="key-files")
@@ -65,6 +68,12 @@ class OverviewPane(VerticalScroll):
         readme = self.query_one("#readme", Static)
         readme.display = overview.readme is not None
         readme.update(Text(overview.readme or ""))
+
+    def show_coverage(self, coverage: Coverage | None) -> None:
+        line = self.query_one("#coverage", Static)
+        line.display = coverage is not None
+        if coverage is not None:
+            line.update(coverage_summary(coverage))
 
     def show_git(self, summary: GitSummary | None) -> None:
         line = self.query_one("#git", Static)

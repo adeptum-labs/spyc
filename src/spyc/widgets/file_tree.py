@@ -24,6 +24,7 @@ from textual.message import Message
 from textual.widgets import Tree
 from textual.widgets.tree import TreeNode
 
+from spyc.coverage.text import percent_style, percent_text
 from spyc.git.status import rollup
 from spyc.printable import printable
 from spyc.tree_model import Entry, TreeModel
@@ -52,6 +53,12 @@ class FileTree(Tree[Entry]):
         self._populated: set[int] = set()
         self._file_status: dict[str, str] = {}
         self._directory_status: dict[str, str] = {}
+        self._file_coverage: dict[str, float] = {}
+        self._directory_coverage: dict[str, float] = {}
+
+    def set_coverage(self, files: dict[str, float], directories: dict[str, float]) -> None:
+        self._file_coverage, self._directory_coverage = files, directories
+        self._relabel(self.root)
 
     # The directories can be worked out by the caller, off the UI thread: for
     # a tree with hundreds of thousands of changes it takes seconds.
@@ -71,6 +78,9 @@ class FileTree(Tree[Entry]):
         code = (self._directory_status if entry.is_dir else self._file_status).get(entry.path)
         if code:
             label.append(f" {code}", style=STATUS_STYLES[code])
+        percent = (self._directory_coverage if entry.is_dir else self._file_coverage).get(entry.path)
+        if percent is not None:
+            label.append(f" {percent_text(percent)}", style=percent_style(percent))
         return label
 
     def load(self, model: TreeModel) -> None:
