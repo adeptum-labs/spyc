@@ -30,14 +30,16 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from spyc.analysis import Analysis, analyse
+from spyc.deps.facts import FileFacts, facts_from_json, facts_to_json
 from spyc.fileio import read_limited
 from spyc.languages import Language, detect_language
-from spyc.symbols import Symbol, symbols_of
+from spyc.symbols import Symbol
 
 log = logging.getLogger(__name__)
 MAX_SYMBOL_FILE = 1024 * 1024
 BINARY_PROBE = 8192
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 SIGNED_DISTRIBUTIONS = ("spyc", "tree-sitter")
 
 
@@ -70,18 +72,20 @@ def _is_heading(symbol: Symbol) -> bool:
 
 def _indexable(path: str) -> Language | None:
     language = detect_language(path)
-    return language if language is not None and (language.tags or language.id == "markdown") else None
+    return language if language is not None and (language.tags or language.imports or language.id == "markdown") else None
 
 
-# The definitions of every file of the project. It is filled from a worker
-# thread while the interface reads it, and remembers each file by its size and
-# modification time, on disk too, so that only files that changed are parsed
-# again the next time. Nothing is read from disk until `update` runs.
+# The definitions and the facts for the dependency graph of every file of the
+# project, from one parse of each. It is filled from a worker thread while the
+# interface reads it, and remembers each file by its size and modification
+# time, on disk too, so that only files that changed are parsed again the next
+# time. Nothing is read from disk until `update` runs.
 class SymbolIndex:
     def __init__(self, root: Path, cache_path: Path | None = None) -> None:
         self._root, self._cache_path = root, cache_path
         self._lock = threading.Lock()
         self._files: dict[str, list[Symbol]] = {}
+        self._facts: dict[str, FileFacts] = {}
         self._stamps: dict[str, list[int]] = {}
         self._flat: tuple[Located, ...] | None = None
         self._by_name: dict[str, list[Located]] = {}
@@ -95,6 +99,7 @@ class SymbolIndex:
             wanted = {path for path, _ in candidates}
             if not wanted.issuperset(self._files):
                 self._files = {path: symbols for path, symbols in self._files.items() if path in wanted}
+                self._facts = {path: facts for path, facts in self._facts.items() if path in wanted}
                 self._stamps = {path: stamp for path, stamp in self._stamps.items() if path in wanted}
                 self._changed, self._flat = True, None
             self.done, self.total = 0, len(candidates)
@@ -109,6 +114,10 @@ class SymbolIndex:
     def all(self) -> tuple[Located, ...]:
         with self._lock:
             return self._flattened()
+
+    def facts(self) -> dict[str, FileFacts]:
+        with self._lock:
+            return dict(self._facts)
 
     def lookup(self, name: str) -> list[Located]:
         with self._lock:
@@ -132,17 +141,21 @@ class SymbolIndex:
         with self._lock:
             if self._stamps.get(path) == stamp and path in self._files:
                 return
-        symbols = self._read(self._root / path, language)
+        analysis = self._read(self._root / path, language)
         with self._lock:
-            self._files[path], self._stamps[path] = symbols, stamp
+            self._files[path], self._stamps[path] = analysis.symbols, stamp
+            if analysis.facts is not None:
+                self._facts[path] = analysis.facts
+            else:
+                self._facts.pop(path, None)
             self._changed, self._flat = True, None
 
     @staticmethod
-    def _read(file: Path, language: Language) -> list[Symbol]:
+    def _read(file: Path, language: Language) -> Analysis:
         data = read_limited(file, MAX_SYMBOL_FILE)
         if data is None or b"\0" in data[:BINARY_PROBE]:
-            return []
-        return symbols_of(data.decode("utf-8", errors="replace"), language)
+            return Analysis([], None)
+        return analyse(data.decode("utf-8", errors="replace"), language)
 
     def _load_cache(self) -> None:
         if self._loaded or self._cache_path is None:
@@ -153,11 +166,12 @@ class SymbolIndex:
             if cached["version"] != CACHE_VERSION or cached["signature"] != _signature():
                 return
             files = {path: [Symbol(*fields) for fields in entry["symbols"]] for path, entry in cached["files"].items()}
+            facts = {path: facts_from_json(entry["facts"]) for path, entry in cached["files"].items() if entry["facts"]}
             stamps = {path: list(entry["stamp"]) for path, entry in cached["files"].items()}
         except (OSError, ValueError, KeyError, TypeError):
             return
         with self._lock:
-            self._files, self._stamps, self._flat = files, stamps, None
+            self._files, self._facts, self._stamps, self._flat = files, facts, stamps, None
 
     def _save_cache(self) -> None:
         if self._cache_path is None:
@@ -166,7 +180,8 @@ class SymbolIndex:
             if not self._changed:
                 return
             files = {path: {"stamp": self._stamps[path],
-                            "symbols": [[s.name, s.kind, s.line, s.column] for s in symbols]}
+                            "symbols": [[s.name, s.kind, s.line, s.column] for s in symbols],
+                            "facts": facts_to_json(self._facts[path]) if path in self._facts else None}
                      for path, symbols in self._files.items() if path in self._stamps}
             self._changed = False
         try:

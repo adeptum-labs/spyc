@@ -62,8 +62,8 @@ def test_files_that_did_not_change_are_not_read_again_from_the_cache(project, tm
     cache = tmp_path / "cache.json"
     SymbolIndex(project, cache).update(PATHS)
     parsed = []
-    real = spyc.symbol_index.symbols_of
-    monkeypatch.setattr(spyc.symbol_index, "symbols_of", lambda text, language: parsed.append(language.id) or real(text, language))
+    real = spyc.symbol_index.analyse
+    monkeypatch.setattr(spyc.symbol_index, "analyse", lambda text, language: parsed.append(language.id) or real(text, language))
     later = SymbolIndex(project, cache)
     later.update(PATHS)
     assert parsed == [] and names(later.lookup("foo")) == [("a.py", "foo", 1), ("src/B.java", "foo", 1)]
@@ -149,8 +149,8 @@ def test_a_cache_from_another_version_of_the_grammars_is_not_trusted(project, tm
     monkeypatch.setattr(spyc.symbol_index, "_signature", lambda: "spyc 1, tree-sitter-python 1")
     SymbolIndex(project, cache).update(PATHS)
     parsed = []
-    real = spyc.symbol_index.symbols_of
-    monkeypatch.setattr(spyc.symbol_index, "symbols_of", lambda text, language: parsed.append(language.id) or real(text, language))
+    real = spyc.symbol_index.analyse
+    monkeypatch.setattr(spyc.symbol_index, "analyse", lambda text, language: parsed.append(language.id) or real(text, language))
     SymbolIndex(project, cache).update(PATHS)
     assert parsed == []
     monkeypatch.setattr(spyc.symbol_index, "_signature", lambda: "spyc 1, tree-sitter-python 2")
@@ -170,3 +170,42 @@ def test_lookups_follow_the_files_as_they_are_indexed(project):
     write_files(project, {"c.py": "def foo(): pass\n"})
     index.update(("a.py", "c.py"))
     assert names(index.lookup("foo")) == [("a.py", "foo", 1), ("c.py", "foo", 1)]
+
+
+from spyc.deps.facts import ClassDef, FileFacts, Import
+
+JAVA_FILES = {"a/A.java": "package a;\nimport b.B;\nclass A {}\n", "b/B.java": "package b;\nclass B {}\n", "c.py": "x = 1\n"}
+JAVA_PATHS = tuple(sorted(JAVA_FILES))
+
+
+def test_the_facts_of_java_files_are_kept_and_files_without_import_queries_have_none(tmp_path):
+    write_files(tmp_path, JAVA_FILES)
+    index = SymbolIndex(tmp_path)
+    index.update(JAVA_PATHS)
+    assert index.facts() == {
+        "a/A.java": FileFacts("a", (ClassDef("A", 3),), (Import("b.B"),), frozenset({"B", "A"})),
+        "b/B.java": FileFacts("b", (ClassDef("B", 2),), (), frozenset({"B"}))}
+
+
+def test_facts_come_back_from_the_cache_without_parsing_and_files_that_are_gone_lose_theirs(tmp_path, monkeypatch):
+    write_files(tmp_path / "p", JAVA_FILES)
+    cache = tmp_path / "cache.json"
+    first = SymbolIndex(tmp_path / "p", cache)
+    first.update(JAVA_PATHS)
+    parsed = []
+    real = spyc.symbol_index.analyse
+    monkeypatch.setattr(spyc.symbol_index, "analyse", lambda text, language: parsed.append(language.id) or real(text, language))
+    later = SymbolIndex(tmp_path / "p", cache)
+    later.update(JAVA_PATHS)
+    assert parsed == [] and later.facts() == first.facts()
+    later.update(("b/B.java",))
+    assert set(later.facts()) == {"b/B.java"}
+
+
+def test_facts_is_a_copy_that_the_caller_may_keep(tmp_path):
+    write_files(tmp_path, JAVA_FILES)
+    index = SymbolIndex(tmp_path)
+    index.update(JAVA_PATHS)
+    taken = index.facts()
+    index.update(())
+    assert set(taken) == {"a/A.java", "b/B.java"} and index.facts() == {}
