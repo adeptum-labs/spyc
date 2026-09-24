@@ -38,3 +38,14 @@ def test_facts_survive_a_round_trip_through_json_and_the_json_is_stable():
 def test_facts_that_are_not_facts_raise_the_errors_the_cache_reader_handles(data):
     with pytest.raises((KeyError, ValueError, TypeError)):
         facts_from_json(data)
+
+
+@pytest.mark.parametrize("data", [
+    {"unit": "", "classes": [["B", "7"]], "imports": [], "used": []},
+    {"unit": "", "classes": [[3, 7]], "imports": [], "used": []},
+    {"unit": "", "classes": [], "imports": [[123, False, False]], "used": []},
+    {"unit": "", "classes": [], "imports": [["a", "yes", False]], "used": []},
+    {"unit": "", "classes": [], "imports": [], "used": [1]}])
+def test_facts_with_the_wrong_kinds_of_values_are_refused_not_carried_into_the_graph(data):
+    with pytest.raises((TypeError, ValueError)):
+        facts_from_json(data)

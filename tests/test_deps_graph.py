@@ -152,3 +152,37 @@ def test_a_chain_of_thousands_of_files_does_not_overflow_the_stack_finding_cycle
     started = time.perf_counter()
     assert DependencyGraph(files).cycle_members(Node(FILE, "p/C0.java")) == frozenset()
     assert time.perf_counter() - started < 3
+
+
+def test_finding_the_nodes_of_a_cycle_of_thousands_of_files_is_fast():
+    files = {f"p/C{index}.java": facts("p", [f"C{index}"], [Import(f"p.C{(index + 1) % 12000}")]) for index in range(12000)}
+    graph = DependencyGraph(files)
+    started = time.perf_counter()
+    assert len(graph.cyclic_nodes(FILE)) == 12000
+    assert time.perf_counter() - started < 2
+
+
+def test_a_file_with_thousands_of_classes_and_imports_cannot_blow_up_the_class_edges():
+    from spyc.deps.graph import MAX_CLASS_EDGES_PER_FILE
+    files = {"b/Big.java": facts("b", [f"T{index}" for index in range(1000)]),
+             "h/Hostile.java": facts("h", [f"H{index}" for index in range(1000)], [Import(f"b.T{index}") for index in range(1000)])}
+    started = time.perf_counter()
+    graph = DependencyGraph(files)
+    edges = sum(len(graph.outgoing(node)) for node in graph.nodes(CLASS))
+    assert edges <= MAX_CLASS_EDGES_PER_FILE and time.perf_counter() - started < 3
+
+
+def test_two_files_that_declare_the_same_class_have_no_edge_between_the_copies_or_from_a_class_to_itself():
+    files = {"m1/Foo.java": facts("com.acme", ["Foo"]), "m2/Foo.java": facts("com.acme", ["Foo"], [Import("com.acme.Foo")], ["Foo"])}
+    graph = DependencyGraph(files)
+    assert graph.outgoing(Node(FILE, "m2/Foo.java")) == [] and graph.outgoing(Node(CLASS, "com.acme.Foo")) == []
+    assert graph.outgoing(Node(UNIT, "com.acme")) == []
+
+
+def test_a_build_that_is_asked_to_stop_stops():
+    import pytest
+    from spyc.deps.graph import Stopped
+    files = {f"p/C{index}.java": facts("p", [f"C{index}"]) for index in range(1000)}
+    with pytest.raises(Stopped):
+        DependencyGraph(files, stop=lambda: True)
+    assert not DependencyGraph(files, stop=lambda: False).empty

@@ -122,3 +122,48 @@ async def test_r_builds_the_graph_again_after_a_file_is_added(tmp_path):
         write_files(tmp_path / "proj", {"src/c/C.java": "package com.acme.c;\nimport com.acme.a.A;\nclass C {}\n"})
         await pilot.press("R")
         await until(pilot, lambda: len(app._graph.nodes("unit")) == 3)
+
+
+def notes_of(monkeypatch):
+    notes = []
+    monkeypatch.setattr(SpycApp, "notify", lambda self, message, **options: notes.append(message))
+    return notes
+
+
+async def test_an_error_while_indexing_is_told_to_the_user_and_shown_in_the_graph_screen(tmp_path, monkeypatch):
+    def broken(facts, stop=lambda: False):
+        raise RuntimeError("boom \x1b[2J")
+
+    write_files(tmp_path / "proj", JAVA)
+    monkeypatch.setattr("spyc.app.DependencyGraph", broken)
+    notes = notes_of(monkeypatch)
+    app = make_app(tmp_path / "proj", tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await until(pilot, lambda: notes)
+        assert notes == ["Could not index the project: boom ␛[2J"]
+        await pilot.press("G")
+        await until(pilot, lambda: isinstance(app.screen, GraphScreen))
+        assert "Could not index the project" in graph_text(app) and "No dependencies found" not in graph_text(app)
+
+
+async def test_a_graph_build_is_cut_short_when_the_app_is_left(tmp_path, monkeypatch):
+    import time
+    seen = []
+
+    def slow(facts, stop=lambda: False):
+        deadline = time.monotonic() + 5
+        while not stop() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        seen.append(stop())
+        from spyc.deps.graph import Stopped
+        raise Stopped
+
+    write_files(tmp_path / "proj", JAVA)
+    monkeypatch.setattr("spyc.app.DependencyGraph", slow)
+    async with make_app(tmp_path / "proj", tmp_path).run_test(size=SIZE) as pilot:
+        await pilot.pause(0.5)
+        assert seen == []
+    deadline = time.monotonic() + 5
+    while not seen and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert seen == [True]

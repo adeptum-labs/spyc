@@ -29,8 +29,9 @@ from spyc.deps.render import FocusLayout
 from spyc.line_text import segments_of
 
 
-# Draws a FocusLayout; the screen owns what is selected.
-class GraphView(ScrollView):
+# Draws a FocusLayout; the screen owns what is selected. It does not take the focus,
+# because a focused ScrollView would use the arrow keys to scroll instead of the screen's.
+class GraphView(ScrollView, can_focus=False):
     class Clicked(Message):
         def __init__(self, side: str, index: int) -> None:
             super().__init__()
@@ -44,6 +45,16 @@ class GraphView(ScrollView):
         self.drawing = layout
         self.virtual_size = Size(max((line.cell_len for line in layout.lines), default=1), max(len(layout.lines), 1))
         self.refresh()
+
+    # Scrolls so that the row can be seen, as the selection moves through more neighbours than there are rows.
+    def reveal(self, row: int) -> None:
+        top, height = self.scroll_offset.y, self.scrollable_content_region.height
+        if height <= 0:
+            return
+        if row < top:
+            self.scroll_to(y=row, animate=False, immediate=True)
+        elif row >= top + height:
+            self.scroll_to(y=row - height + 1, animate=False, immediate=True)
 
     def render_line(self, y: int) -> Strip:
         row = y + self.scroll_offset.y

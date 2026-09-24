@@ -93,6 +93,12 @@ def _weight(entry: Entry) -> str:
     return f"×{min(entry.weight, 999)}".rjust(WEIGHT_WIDTH)
 
 
+# The selected name is cut to a third of the width, so that a long path leaves room for its neighbours.
+def _shortened(name: str, width: int) -> str:
+    limit = max(width // 3, 12)
+    return name if len(name) <= limit else "…" + name[len(name) - limit + 1:]
+
+
 def _rows_of(count: int, rows: int, middle: int) -> range:
     start = min(max(middle - count // 2, 0), rows - count)
     return range(start, start + count)
@@ -118,6 +124,7 @@ def focus_layout(centre: str, left: list[Entry], right: list[Entry], width: int,
                  selected: tuple[str, int] | None = None) -> FocusLayout:
     rows = max(len(left), len(right), 1)
     middle = rows // 2
+    centre = _shortened(centre, width)
     room = max(width - (2 * WEIGHT_WIDTH + 2 * ARM + 12) - len(centre), 2)
     left_width = min(_width_of(left), room // 2)
     right_width = min(_width_of(right), room - left_width)

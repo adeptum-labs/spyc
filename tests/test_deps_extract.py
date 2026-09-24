@@ -104,3 +104,9 @@ def test_a_file_with_thousands_of_imports_is_capped():
     source = "package a.b;\n" + "".join(f"import p{index}.C{index};\n" for index in range(MAX_IMPORTS + 100))
     result = facts("java", source)
     assert len(result.imports) == MAX_IMPORTS and len(result.used) == MAX_USED
+
+
+def test_a_file_with_thousands_of_classes_keeps_only_the_first_ones():
+    from spyc.deps.extract import MAX_CLASSES
+    result = facts("java", "".join(f"class C{index} {{}}\n" for index in range(MAX_CLASSES + 50)))
+    assert len(result.classes) == MAX_CLASSES and result.classes[0] == ClassDef("C0", 1)

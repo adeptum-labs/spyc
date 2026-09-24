@@ -68,9 +68,10 @@ class GraphScreen(Screen[Location | None]):
     ]
 
     def __init__(self, root: Path, graph: DependencyGraph | None, progress: Callable[[], str],
-                 path: str | None = None) -> None:
+                 path: str | None = None, failure: str | None = None) -> None:
         super().__init__()
         self._root, self._graph, self._progress, self._path = root, graph, progress, path
+        self._failure = failure
         self.centre: Node | None = None
         self._side, self._index = "out", 0
         self._history: list[Node] = []
@@ -84,11 +85,11 @@ class GraphScreen(Screen[Location | None]):
 
     def on_mount(self) -> None:
         self.sub_title = "Dependencies"
-        if self._graph is None:
-            self._timer = self.set_interval(PROGRESS_INTERVAL, self._redraw)
-        else:
+        if self._graph is not None:
             self.centre = self._initial(self._graph)
             self._select_default()
+        elif self._failure is None:
+            self._timer = self.set_interval(PROGRESS_INTERVAL, self._redraw)
         self._redraw()
 
     def on_resize(self) -> None:
@@ -96,16 +97,25 @@ class GraphScreen(Screen[Location | None]):
 
     # A new graph arrives when the project is read again: the middle stays where it was if that node still exists.
     def set_graph(self, graph: DependencyGraph) -> None:
-        self._graph = graph
-        if self._timer is not None:
-            self._timer.stop()
-            self._timer = None
+        self._graph, self._failure = graph, None
+        self._stop_waiting()
         if self.centre is None or not graph.has(self.centre):
             self._history.clear()
             self.centre = self._initial(graph)
             self._select_default()
         self._clamp_selection()
         self._redraw()
+
+    # Something went wrong reading the project, so there is no graph to wait for.
+    def set_failure(self, message: str) -> None:
+        self._failure = message
+        self._stop_waiting()
+        self._redraw()
+
+    def _stop_waiting(self) -> None:
+        if self._timer is not None:
+            self._timer.stop()
+            self._timer = None
 
     def _initial(self, graph: DependencyGraph) -> Node | None:
         return (graph.unit_of(self._path) if self._path else None) or graph.most_connected(graph.nodes(UNIT))
@@ -127,17 +137,27 @@ class GraphScreen(Screen[Location | None]):
         view, header = self.query_one(GraphView), self.query_one("#graph-header", Static)
         graph = self._graph
         if graph is None or self.centre is None:
-            progress = self._progress()
-            message = f"Reading imports ({progress})" if progress and graph is None else NOTHING_FOUND
             header.update(Text(""))
-            view.show(FocusLayout([Text(message)], []))
+            view.show(FocusLayout([Text(self._message(graph))], []))
             return
         left = entries_of(graph, self.centre, graph.incoming(self.centre), printable)
         right = entries_of(graph, self.centre, graph.outgoing(self.centre), printable)
         selected = (self._side, self._index) if self._neighbours(self._side) else None
         layout = focus_layout if self.size.width >= NARROW_WIDTH else stacked_layout
         header.update(header_text(graph, self.centre, printable))
-        view.show(layout(printable(self.centre.name), left, right, self.size.width, selected))
+        drawing = layout(printable(self.centre.name), left, right, self.size.width, selected)
+        view.show(drawing)
+        selected_place = next((place for place in drawing.places if (place.side, place.index) == selected), None)
+        if selected_place is not None:
+            view.reveal(selected_place.row)
+
+    def _message(self, graph: DependencyGraph | None) -> str:
+        if self._failure is not None:
+            return self._failure
+        if graph is not None:
+            return NOTHING_FOUND
+        progress = self._progress()
+        return f"Reading imports ({progress})" if progress else "Reading imports"
 
     def _go(self, node: Node) -> None:
         if self.centre is not None:

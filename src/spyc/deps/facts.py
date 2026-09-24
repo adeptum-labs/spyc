@@ -51,9 +51,13 @@ def facts_to_json(facts: FileFacts) -> dict:
             "used": sorted(facts.used)}
 
 
+# A cache is read back from disk, so what it holds is checked before the graph is built on it.
 def facts_from_json(data: dict) -> FileFacts:
-    if not isinstance(data["unit"], str):
-        raise TypeError("unit")
-    return FileFacts(data["unit"], tuple(ClassDef(name, line) for name, line in data["classes"]),
-                     tuple(Import(path, wildcard, static) for path, wildcard, static in data["imports"]),
-                     frozenset(data["used"]))
+    classes = tuple(ClassDef(name, line) for name, line in data["classes"])
+    imports = tuple(Import(path, wildcard, static) for path, wildcard, static in data["imports"])
+    used = frozenset(data["used"])
+    if not (isinstance(data["unit"], str) and all(isinstance(c.name, str) and type(c.line) is int for c in classes)
+            and all(isinstance(i.path, str) and type(i.wildcard) is bool and type(i.static) is bool for i in imports)
+            and all(isinstance(name, str) for name in used)):
+        raise TypeError("facts")
+    return FileFacts(data["unit"], classes, imports, used)

@@ -19,8 +19,9 @@
 
 
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from itertools import islice
 
 from spyc.deps.facts import FileFacts, Import
 
@@ -28,6 +29,14 @@ UNIT, FILE, CLASS = "unit", "file", "class"
 LEVELS = (UNIT, FILE, CLASS)
 DEFAULT_UNIT = "(default)"
 EXTERNAL_SEGMENTS = 2
+# Every top-level class of a file gets every target of the file, which is the product of two
+# counts that a generated or hostile file can make huge.
+MAX_CLASS_EDGES_PER_FILE = 20_000
+
+
+# The caller asked for the build to stop, for instance because the app is being left.
+class Stopped(Exception):
+    pass
 
 
 @dataclass(frozen=True, order=True)
@@ -97,7 +106,8 @@ def _reach(path: str, facts: FileFacts, project: _Definitions) -> _Reach:
         for name in facts.used:
             if (found := project.classes.get((unit, name))) is not None:
                 reach.targets.add((found, unit, name))
-    reach.targets = {target for target in reach.targets if target[0] != path}
+    own = {(facts.unit, definition.name) for definition in facts.classes}
+    reach.targets = {target for target in reach.targets if target[0] != path and (target[1], target[2]) not in own}
     return reach
 
 
@@ -121,7 +131,7 @@ def _follow(imported: Import, project: _Definitions, reach: _Reach, wildcards: s
 # Who depends on whom, at three levels: unit (a package, or a directory), file and
 # class. Built once and never changed, so another thread may read it.
 class DependencyGraph:
-    def __init__(self, files: Mapping[str, FileFacts]) -> None:
+    def __init__(self, files: Mapping[str, FileFacts], stop: Callable[[], bool] = lambda: False) -> None:
         self._files = dict(files)
         self._out: dict[str, Edges] = {level: defaultdict(dict) for level in LEVELS}
         self._in: dict[str, Edges] = {level: defaultdict(dict) for level in LEVELS}
@@ -134,7 +144,11 @@ class DependencyGraph:
         for path, facts in sorted(self._files.items()):
             self._add_structure(path, facts)
         for path, facts in sorted(self._files.items()):
+            if stop():
+                raise Stopped
             self._add_dependencies(path, facts, _reach(path, facts, project))
+        for level in LEVELS:
+            self._components[level] = _components(self._out[level], self.nodes(level))
 
     def _add_structure(self, path: str, facts: FileFacts) -> None:
         unit, file = Node(UNIT, facts.unit), Node(FILE, path)
@@ -154,10 +168,9 @@ class DependencyGraph:
                 self._link(UNIT, unit, Node(UNIT, target_unit), max(files_in_unit[target_unit], 1))
         for target_path, count in Counter(found for found, _, _ in reach.targets).items():
             self._link(FILE, file, Node(FILE, target_path), count)
-        for own in facts.classes:
-            source = Node(CLASS, _class_key(facts.unit, own.name))
-            for _, target_unit, name in reach.targets:
-                self._link(CLASS, source, Node(CLASS, _class_key(target_unit, name)), 1)
+        pairs = ((own, target) for own in facts.classes for target in sorted(reach.targets))
+        for own, (_, target_unit, name) in islice(pairs, MAX_CLASS_EDGES_PER_FILE):
+            self._link(CLASS, Node(CLASS, _class_key(facts.unit, own.name)), Node(CLASS, _class_key(target_unit, name)), 1)
         for name, count in reach.external.items():
             self._external[file][name] += count
             self._external[unit][name] += count
@@ -218,11 +231,9 @@ class DependencyGraph:
         return self._component_of(node) - {node}
 
     def cyclic_nodes(self, level: str) -> list[Node]:
-        return [node for node in self.nodes(level) if self.cycle_members(node)]
+        return [node for node in self.nodes(level) if len(self._component_of(node)) > 1]
 
     def _component_of(self, node: Node) -> frozenset[Node]:
-        if node.level not in self._components:
-            self._components[node.level] = _components(self._out[node.level], self.nodes(node.level))
         return self._components[node.level].get(node, frozenset({node}))
 
 

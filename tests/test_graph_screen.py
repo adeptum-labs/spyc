@@ -237,3 +237,66 @@ async def test_names_with_control_characters_are_shown_as_symbols():
     async with app.run_test(size=(120, 30)) as pilot:
         await pilot.pause()
         assert "\x1b" not in screen_text(app) and "\x1b" not in header(app)
+
+
+def hub_graph(dependents=60):
+    files = {"hub/Hub.java": facts("hub", ["Hub"])}
+    files.update({f"u{index:02}/U.java": facts(f"u{index:02}", ["U"], [Import("hub.Hub")]) for index in range(dependents)})
+    return DependencyGraph(files)
+
+
+async def test_the_arrow_keys_move_the_selection_when_there_are_more_neighbours_than_rows():
+    app = GraphApp(hub_graph(), "hub/Hub.java")
+    async with app.run_test(size=(120, 20)) as pilot:
+        await pilot.pause()
+        await pilot.press("left", *["down"] * 45)
+        view = app.screen.query_one(GraphView)
+        place = next(place for place in view.drawing.places if (place.side, place.index) == ("in", 45))
+        assert view.scroll_offset.y <= place.row < view.scroll_offset.y + view.scrollable_content_region.height
+        await pilot.press("enter")
+        assert app.screen.centre == Node(UNIT, "u45")
+
+
+async def test_left_and_right_still_choose_the_column_when_the_drawing_is_wider_than_the_view():
+    long_name = "com.acme." + "very.long.package.name." * 6 + "hub"
+    files = {"hub/Hub.java": facts(long_name, ["Hub"], [Import("z.Z")]), "z/Z.java": facts("z", ["Z"]),
+             "a/A.java": facts("a", ["A"], [Import(f"{long_name}.Hub")])}
+    app = GraphApp(DependencyGraph(files), "hub/Hub.java")
+    async with app.run_test(size=(60, 20)) as pilot:
+        await pilot.pause()
+        assert app.screen.query_one(GraphView).virtual_size.width > 60
+        await pilot.press("left")
+        assert app.screen._side == "in"
+        await pilot.press("right")
+        assert app.screen._side == "out"
+
+
+async def test_down_and_right_choose_the_second_neighbour_and_the_other_column():
+    app = GraphApp(GRAPH, "src/order/Repo.java")
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause()
+        await pilot.press("down", "enter")
+        assert app.screen.centre == MODEL
+        await pilot.press("backspace", "left", "enter")
+        assert app.screen.centre == BILLING
+
+
+async def test_while_the_graph_does_not_exist_the_screen_never_claims_that_nothing_was_found():
+    for progress in ("", "indexing 3/9"):
+        app = GraphApp(None, "src/order/Repo.java", lambda progress=progress: progress)
+        async with app.run_test(size=(120, 30)) as pilot:
+            await pilot.pause()
+            text = screen_text(app)
+            assert "Reading imports" in text and "No dependencies found" not in text
+
+
+async def test_a_failure_is_shown_instead_of_waiting_for_ever_and_a_graph_that_arrives_later_replaces_it():
+    app = GraphApp(None, "src/order/Repo.java")
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause()
+        app.screen.set_failure("Could not index the project: boom")
+        await pilot.pause()
+        assert "Could not index the project: boom" in screen_text(app) and app.screen._timer is None
+        app.screen.set_graph(GRAPH)
+        await pilot.pause()
+        assert "boom" not in screen_text(app) and app.screen.centre == ORDER

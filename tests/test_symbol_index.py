@@ -18,6 +18,7 @@
 # Contact: info@adeptum.se
 
 
+import json
 import os
 import time
 
@@ -209,3 +210,16 @@ def test_facts_is_a_copy_that_the_caller_may_keep(tmp_path):
     taken = index.facts()
     index.update(())
     assert set(taken) == {"a/A.java", "b/B.java"} and index.facts() == {}
+
+
+def test_a_cache_whose_facts_have_the_wrong_kinds_of_values_is_ignored_and_the_files_are_read_again(tmp_path):
+    write_files(tmp_path / "p", {"a/A.java": "package a;\nimport b.B;\nclass A {}\n"})
+    cache = tmp_path / "cache.json"
+    first = SymbolIndex(tmp_path / "p", cache)
+    first.update(("a/A.java",))
+    data = json.loads(cache.read_text())
+    data["files"]["a/A.java"]["facts"]["imports"] = [[123, False, False]]
+    cache.write_text(json.dumps(data))
+    later = SymbolIndex(tmp_path / "p", cache)
+    later.update(("a/A.java",))
+    assert later.facts()["a/A.java"].imports == (Import("b.B"),)

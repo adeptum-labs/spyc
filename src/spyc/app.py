@@ -35,7 +35,7 @@ from textual.worker import Worker, WorkerState, get_current_worker
 from spyc.coverage.index import Coverage
 from spyc.coverage.reports import find_reports, load_reports
 from spyc.coverage.text import coverage_status
-from spyc.deps.graph import DependencyGraph
+from spyc.deps.graph import DependencyGraph, Stopped
 from spyc.document import load_document
 from spyc.editor import editor_command
 from spyc.file_index import MAX_INDEXED_FILES, FileIndex, build_index
@@ -131,6 +131,7 @@ class SpycApp(App):
         self._coverage: Coverage | None = None
         self._coverage_loading = False
         self._graph: DependencyGraph | None = None
+        self._graph_failure: str | None = None
         self._coverage_shown = bool(self.store.get("coverage", True))
         self.history = JumpHistory()
         self.overview: Overview | None = None
@@ -230,21 +231,34 @@ class SpycApp(App):
             return worker.is_cancelled or generation != self._index_generation
 
         self._symbols.update(paths, stop=stopped)
-        if not stopped():
-            self.call_from_thread(self._graph_ready, generation, DependencyGraph(self._symbols.facts()))
+        if stopped():
+            return
+        try:
+            graph = DependencyGraph(self._symbols.facts(), stopped)
+        except Stopped:
+            return
+        self.call_from_thread(self._graph_ready, generation, graph)
 
     def _graph_ready(self, generation: int, graph: DependencyGraph) -> None:
         if generation != self._index_generation:
             return
-        self._graph = graph
+        self._graph, self._graph_failure = graph, None
         for screen in self.screen_stack:
             if isinstance(screen, GraphScreen):
                 screen.set_graph(graph)
 
+    def _graph_failed(self, error: object) -> None:
+        self._graph_failure = f"Could not index the project: {printable(str(error))}"
+        self.notify(self._graph_failure, severity="error", markup=False)
+        for screen in self.screen_stack:
+            if isinstance(screen, GraphScreen):
+                screen.set_failure(self._graph_failure)
+
     def action_show_graph(self) -> None:
         code = self._code
         path = code.display_path if code.document is not None else None
-        self.push_screen(GraphScreen(self.project_root, self._graph, self._symbol_progress, path), self._location_chosen)
+        screen = GraphScreen(self.project_root, self._graph, self._symbol_progress, path, self._graph_failure)
+        self.push_screen(screen, self._location_chosen)
 
     # The reports are those named on the command line, or else the ones the
     # project has; reading them can take a moment, so it is done off the UI thread.
@@ -390,6 +404,8 @@ class SpycApp(App):
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.state is WorkerState.ERROR and event.worker.group == "index":
             self.notify(f"Could not read the project files: {event.worker.error}", severity="error", markup=False)
+        if event.state is WorkerState.ERROR and event.worker.group == "symbols":
+            self._graph_failed(event.worker.error)
         if event.state is WorkerState.ERROR and event.worker.group == "coverage":
             self._coverage_loading = False
             self.notify(f"Could not read the coverage reports: {printable(str(event.worker.error))}", severity="error",

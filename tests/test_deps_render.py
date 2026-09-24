@@ -106,3 +106,11 @@ def test_control_characters_in_names_never_reach_the_layout():
     layout = focus_layout(printable(node.name), [], entries_of(graph, node, graph.outgoing(node), printable), 100)
     assert all("\x1b" not in line.plain and "\x07" not in line.plain for line in layout.lines)
     assert "\x1b" not in header_text(graph, node, printable).plain
+
+
+def test_a_long_selected_name_does_not_take_the_room_of_the_neighbours():
+    centre = "src/main/java/com/adeptum/docunord/model/service/UserService.java"
+    neighbour = "src/main/java/com/adeptum/docunord/view/BillingCheckoutBean.java"
+    layout = focus_layout(centre, [Entry(neighbour, 1)], [Entry(neighbour, 1)], 100)
+    assert all(place.end - place.start >= 15 for place in layout.places)
+    assert len(layout.lines[0].plain) <= 100

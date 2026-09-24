@@ -24,6 +24,7 @@ from spyc.deps.facts import ClassDef, FileFacts, Import
 
 MAX_IMPORTS = 5000
 MAX_USED = 2000
+MAX_CLASSES = 100
 
 
 def _text(node) -> str:
@@ -39,7 +40,8 @@ def facts_of(tree, query) -> FileFacts:
             unit = _text(captures["package"][0])
         elif "class" in captures:
             node = captures["class"][0]
-            classes.append(ClassDef(_text(node), node.start_point[0] + 1))
+            if len(classes) < MAX_CLASSES:
+                classes.append(ClassDef(_text(node), node.start_point[0] + 1))
         elif "path" in captures:
             if len(imports) < MAX_IMPORTS:
                 imports.append(Import(_text(captures["path"][0]), "wildcard" in captures, "static" in captures))
