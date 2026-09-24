@@ -81,9 +81,12 @@ def header_text(graph: DependencyGraph, centre: Node, printable) -> Text:
     return Text(" · ".join(parts), style="bold")
 
 
+# A name that does not fit loses its start, not its end: package names and paths share their start.
 def _cell(entry: Entry, width: int) -> str:
-    label = entry.label + (CYCLE_MARK if entry.cyclic else "")
-    return (label if len(label) <= width else label[:max(width - 1, 0)] + "…").ljust(width)
+    mark = CYCLE_MARK if entry.cyclic else ""
+    room = max(width - len(mark), 0)
+    label = entry.label if len(entry.label) <= room else ("…" + entry.label[len(entry.label) - room + 1:] if room else "")
+    return (label + mark).ljust(width)
 
 
 def _weight(entry: Entry) -> str:

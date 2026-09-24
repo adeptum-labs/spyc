@@ -51,10 +51,16 @@ def test_a_side_without_neighbours_has_no_arrow_and_one_neighbour_sits_beside_th
     assert plain(focus_layout("x", [], [Entry("b", 2)], 60)) == ["    x ───▶ b   ×2"]
 
 
-def test_long_names_are_cut_with_an_ellipsis_so_that_the_line_fits():
+def test_long_names_lose_their_start_so_that_the_line_fits_and_the_end_that_tells_them_apart_stays():
     line = plain(focus_layout("com.acme.order", [Entry("a.very.long.package.name.here", 1)],
                               [Entry("another.very.long.package.name.too", 1)], 60))[0]
-    assert line == "a.very.lo…   ×1────▶ com.acme.order ───▶ another.v…   ×1"
+    assert line == "…name.here   ×1────▶ com.acme.order ───▶ ….name.too   ×1"
+
+
+def test_a_cut_name_keeps_the_cycle_mark_and_a_column_too_narrow_for_a_name_shows_only_the_mark():
+    line = plain(focus_layout("x", [Entry("com.adeptum.docunord.security.mechanism", 1, True)], [], 100))[0]
+    assert line.startswith("…eptum.docunord.security.mechanism ⟲")
+    assert plain(stacked_layout("x", [Entry("abc", 1, True)], [], 7))[1] == "   ⟲   ×1"
 
 
 def test_on_a_narrow_terminal_the_three_groups_are_stacked():

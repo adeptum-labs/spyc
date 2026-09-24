@@ -35,6 +35,7 @@ from textual.worker import Worker, WorkerState, get_current_worker
 from spyc.coverage.index import Coverage
 from spyc.coverage.reports import find_reports, load_reports
 from spyc.coverage.text import coverage_status
+from spyc.deps.graph import DependencyGraph
 from spyc.document import load_document
 from spyc.editor import editor_command
 from spyc.file_index import MAX_INDEXED_FILES, FileIndex, build_index
@@ -56,6 +57,7 @@ from spyc.symbol_index import Located, SymbolIndex, default_cache_path
 from spyc.symbol_picker import LIST_LIMIT, SymbolSource
 from spyc.symbols import Symbol, symbols_of
 from spyc.screens.changes import ChangesScreen
+from spyc.screens.graph import GraphScreen
 from spyc.screens.help import HelpScreen
 from spyc.screens.log import LogScreen
 from spyc.screens.picker import Picker
@@ -76,7 +78,7 @@ MARKDOWN_LIMIT = 50_000
 # and the pickers while those are open.
 MAIN_VIEW_ACTIONS = frozenset({
     "find_file", "search_project", "show_outline", "find_symbol", "go_to_definition", "search_in_file", "goto_line", "history_back", "history_forward", "show_log", "show_file_log",
-    "show_changes", "toggle_blame", "toggle_coverage", "edit", "copy_location", "overview", "toggle_sidebar", "toggle_ignored",
+    "show_changes", "toggle_blame", "toggle_coverage", "show_graph", "edit", "copy_location", "overview", "toggle_sidebar", "toggle_ignored",
     "toggle_markdown", "refresh_project"})
 
 
@@ -110,6 +112,7 @@ class SpycApp(App):
         Binding("g", "show_changes", "Changes", show=False),
         Binding("b", "toggle_blame", "Blame", show=False),
         Binding("c", "toggle_coverage", "Coverage", show=False),
+        Binding("G", "show_graph", "Graph", show=False),
         Binding("e", "edit", "Edit", show=False),
         Binding("p", "copy_location", "Copy path", show=False),
         Binding("i", "overview", "Info", show=False),
@@ -127,6 +130,7 @@ class SpycApp(App):
         self._coverage_files = tuple(coverage_files)
         self._coverage: Coverage | None = None
         self._coverage_loading = False
+        self._graph: DependencyGraph | None = None
         self._coverage_shown = bool(self.store.get("coverage", True))
         self.history = JumpHistory()
         self.overview: Overview | None = None
@@ -215,12 +219,32 @@ class SpycApp(App):
         self.call_from_thread(self._index_ready, generation, index, TreeModel(index.paths), build_overview(index),
                               PathMatcher(index.paths))
 
-    # The definitions are read in the background after the files are known; a
-    # newer file list, or leaving the app, makes the running pass stop.
+    # The definitions and the facts for the graph are read in the background after
+    # the files are known; a newer file list, or leaving the app, makes the running
+    # pass stop, and the graph is built once a pass has run to its end.
     @work(thread=True, exclusive=True, group="symbols", exit_on_error=False)
     def _index_symbols(self, generation: int, paths: tuple[str, ...]) -> None:
         worker = get_current_worker()
-        self._symbols.update(paths, stop=lambda: worker.is_cancelled or generation != self._index_generation)
+
+        def stopped() -> bool:
+            return worker.is_cancelled or generation != self._index_generation
+
+        self._symbols.update(paths, stop=stopped)
+        if not stopped():
+            self.call_from_thread(self._graph_ready, generation, DependencyGraph(self._symbols.facts()))
+
+    def _graph_ready(self, generation: int, graph: DependencyGraph) -> None:
+        if generation != self._index_generation:
+            return
+        self._graph = graph
+        for screen in self.screen_stack:
+            if isinstance(screen, GraphScreen):
+                screen.set_graph(graph)
+
+    def action_show_graph(self) -> None:
+        code = self._code
+        path = code.display_path if code.document is not None else None
+        self.push_screen(GraphScreen(self.project_root, self._graph, self._symbol_progress, path), self._location_chosen)
 
     # The reports are those named on the command line, or else the ones the
     # project has; reading them can take a moment, so it is done off the UI thread.

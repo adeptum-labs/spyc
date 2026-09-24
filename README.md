@@ -59,6 +59,7 @@ the build systems and the key files, such as the README, the build files, the CI
 | `g` | All uncommitted changes, staged or not, and new files, as one diff |
 | `b` | Show who last changed each line; `Enter` on a line opens that commit |
 | `c` | Show or hide what the tests ran, from the coverage reports |
+| `G` | Dependency graph: what the package, file or class in the middle depends on and what depends on it; `Enter` moves along an edge, `[` and `]` go a level up or down, `c` finds cycles, `o` opens the code |
 | `e` | Edit in `$VISUAL` or `$EDITOR` at the cursor line |
 | `p` | Copy `path:line` to the clipboard |
 | `i` | Project overview |
@@ -82,6 +83,15 @@ Bash and Markdown headings.
 In a git repository the tree marks changed files and their directories, the code view marks added, changed and
 deleted lines in the margin, and the overview and the title tell the branch, the number of changes and the last
 commit. The mouse works too: click to place the cursor, scroll to move.
+
+## Dependencies
+
+`G` draws the dependencies of the project around one node: the packages that depend on it on the left, the ones it depends
+on on the right, with the number of files behind each edge and `⟲` for a package in a cycle with it. Down a level are the
+files of a package and the classes of a file. Java and Kotlin are read: the edges come from imports and from classes of
+the same package (or of a wildcard-imported package) that a file uses by name. What the project does not contain is
+counted on the node, not drawn. Reflection, dependency injection and dynamic loading are invisible, and a variable that
+shares its name with a class of the same package can add an edge that is not there.
 
 ## Coverage
 

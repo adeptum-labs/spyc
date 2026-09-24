@@ -42,6 +42,7 @@ HELP_ROWS: list[tuple[str, str | None, str]] = [
     ("g", "show_changes", "All uncommitted changes as one diff"),
     ("b", "toggle_blame", "Show who last changed each line; Enter on a line opens that commit"),
     ("c", "toggle_coverage", "Show or hide what the tests ran; reports are found by name or given with --coverage"),
+    ("G", "show_graph", "Dependency graph: packages (Java, Kotlin), files and classes; [ ] change level, c cycles"),
     ("e", "edit", "Edit in $VISUAL or $EDITOR at the cursor line"),
     ("p", "copy_location", "Copy path:line to the clipboard"),
     ("i", "overview", "Project overview"),
