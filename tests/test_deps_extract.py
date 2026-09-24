@@ -110,3 +110,24 @@ def test_a_file_with_thousands_of_classes_keeps_only_the_first_ones():
     from spyc.deps.extract import MAX_CLASSES
     result = facts("java", "".join(f"class C{index} {{}}\n" for index in range(MAX_CLASSES + 50)))
     assert len(result.classes) == MAX_CLASSES and result.classes[0] == ClassDef("C0", 1)
+
+
+PYTHON = """import os, a.b as c
+from . import x
+from ..pkg.mod import y as z, w
+from a.b import *
+from .m import n
+from p import (q, r)
+"""
+
+
+def test_python_imports_give_the_module_the_dots_and_the_names_and_a_wildcard():
+    assert facts("python", PYTHON).imports == (
+        Import("os"), Import("a.b"), Import("", level=1, names=("x",)),
+        Import("pkg.mod", level=2, names=("y", "w")), Import("a.b", wildcard=True), Import("m", level=1, names=("n",)),
+        Import("p", names=("q", "r")))
+
+
+def test_python_facts_have_no_package_and_no_classes():
+    result = facts("python", "import os\nclass A: pass\n")
+    assert result.unit == "" and result.classes == () and result.used == frozenset()

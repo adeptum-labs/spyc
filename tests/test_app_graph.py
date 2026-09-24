@@ -93,8 +93,9 @@ async def test_g_before_the_pass_is_done_shows_the_progress_and_the_graph_arrive
         await until(pilot, lambda: "com.acme.b" in graph_text(app))
 
 
-async def test_a_project_without_java_or_kotlin_gets_an_empty_graph_and_a_message(project, tmp_path):
-    app = make_app(project, tmp_path)
+async def test_a_project_without_a_supported_language_gets_an_empty_graph_and_a_message(tmp_path):
+    write_files(tmp_path / "proj", {"notes.txt": "x", "pom.xml": "<project/>"})
+    app = make_app(tmp_path / "proj", tmp_path)
     async with app.run_test(size=SIZE) as pilot:
         await graph_ready(pilot)
         assert app._graph.empty

@@ -70,6 +70,7 @@ TAGS = {
 IMPORTS = {
     "java": (("spyc.syntax", "queries/java/imports.scm"),),
     "kotlin": (("spyc.syntax", "queries/kotlin/imports.scm"),),
+    "python": (("spyc.syntax", "queries/python/imports.scm"),),
 }
 
 # A query that extends another comes first, because the first matching pattern wins.

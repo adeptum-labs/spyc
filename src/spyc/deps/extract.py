@@ -31,6 +31,21 @@ def _text(node) -> str:
     return "".join(node.text.decode("utf-8", errors="replace").split())
 
 
+# from a.b import c as d, e   /   from ..pkg import x   /   from . import y   /   from a import *
+def _from_import(statement) -> Import:
+    module, level, path = statement.child_by_field_name("module_name"), 0, ""
+    if module is not None and module.type == "relative_import":
+        prefix = next((child for child in module.children if child.type == "import_prefix"), None)
+        level = len(prefix.text) if prefix is not None else 1
+        dotted = next((child for child in module.children if child.type == "dotted_name"), None)
+        path = _text(dotted) if dotted is not None else ""
+    elif module is not None:
+        path = _text(module)
+    names = tuple(_text(child.child_by_field_name("name") or child) for child in statement.children_by_field_name("name"))
+    wildcard = any(child.type == "wildcard_import" for child in statement.children)
+    return Import(path, wildcard, False, level, names)
+
+
 # The package of a file, the classes it defines, what it imports and the capitalised
 # names it uses (identifier nodes only, so comments and strings do not count).
 def facts_of(tree, query) -> FileFacts:
@@ -42,6 +57,9 @@ def facts_of(tree, query) -> FileFacts:
             node = captures["class"][0]
             if len(classes) < MAX_CLASSES:
                 classes.append(ClassDef(_text(node), node.start_point[0] + 1))
+        elif "from" in captures:
+            if len(imports) < MAX_IMPORTS:
+                imports.append(_from_import(captures["from"][0]))
         elif "path" in captures:
             if len(imports) < MAX_IMPORTS:
                 imports.append(Import(_text(captures["path"][0]), "wildcard" in captures, "static" in captures))
