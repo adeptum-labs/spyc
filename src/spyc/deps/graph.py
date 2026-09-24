@@ -1,0 +1,270 @@
+# spyc is a terminal viewer for browsing code bases.
+# Copyright © 2026 Adam Waldenberg, Adeptum AB, Org.nr 559494-1824.
+#
+# This program is free software: you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the Free
+# Software Foundation, either version 3 of the License, or (at your option)
+# any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+# or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+# more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# Website: https://www.adeptum.se
+# Contact: info@adeptum.se
+
+
+from collections import Counter, defaultdict
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+
+from spyc.deps.facts import FileFacts, Import
+
+UNIT, FILE, CLASS = "unit", "file", "class"
+LEVELS = (UNIT, FILE, CLASS)
+DEFAULT_UNIT = "(default)"
+EXTERNAL_SEGMENTS = 2
+
+
+@dataclass(frozen=True, order=True)
+class Node:
+    level: str
+    key: str
+
+    @property
+    def name(self) -> str:
+        return self.key or DEFAULT_UNIT if self.level == UNIT else self.key
+
+
+@dataclass(frozen=True)
+class Link:
+    node: Node
+    weight: int
+
+
+Edges = dict[Node, dict[Node, int]]
+Target = tuple[str, str, str]
+
+
+def _class_key(unit: str, name: str) -> str:
+    return f"{unit}.{name}" if unit else name
+
+
+def _external_name(path: str) -> str:
+    return ".".join(path.split(".")[:EXTERNAL_SEGMENTS])
+
+
+# What the project defines, to look imports up in. Where two files define the same
+# class of a package (main and test), the first path in order wins.
+class _Definitions:
+    def __init__(self, files: Mapping[str, FileFacts]) -> None:
+        self.classes: dict[tuple[str, str], str] = {}
+        self.units: set[str] = set()
+        for path, facts in sorted(files.items()):
+            self.units.add(facts.unit)
+            for definition in facts.classes:
+                self.classes.setdefault((facts.unit, definition.name), path)
+
+    # The class an import names: the whole path, or the longest start of it, for a
+    # nested class (a.B.Inner) or a member (a.B.method).
+    def class_of(self, dotted: str) -> Target | None:
+        segments = dotted.split(".")
+        for length in range(len(segments), 0, -1):
+            unit, _, name = ".".join(segments[:length]).rpartition(".")
+            if (path := self.classes.get((unit, name))) is not None:
+                return path, unit, name
+        return None
+
+
+# What one file depends on: classes (file, unit, name), units reached without naming
+# a class, and what is outside the project.
+@dataclass
+class _Reach:
+    targets: set[Target]
+    units: set[str]
+    external: Counter
+
+
+def _reach(path: str, facts: FileFacts, project: _Definitions) -> _Reach:
+    reach, wildcards = _Reach(set(), set(), Counter()), set()
+    for imported in facts.imports:
+        _follow(imported, project, reach, wildcards)
+    for unit in {facts.unit, *wildcards}:
+        for name in facts.used:
+            if (found := project.classes.get((unit, name))) is not None:
+                reach.targets.add((found, unit, name))
+    reach.targets = {target for target in reach.targets if target[0] != path}
+    return reach
+
+
+def _follow(imported: Import, project: _Definitions, reach: _Reach, wildcards: set[str]) -> None:
+    if imported.wildcard:
+        if imported.static and (found := project.class_of(imported.path)):
+            reach.targets.add(found)
+        elif imported.path in project.units:
+            wildcards.add(imported.path)
+            reach.units.add(imported.path)
+        else:
+            reach.external[_external_name(imported.path)] += 1
+    elif (found := project.class_of(imported.path)) is not None:
+        reach.targets.add(found)
+    elif imported.path.rpartition(".")[0] in project.units:
+        reach.units.add(imported.path.rpartition(".")[0])
+    else:
+        reach.external[_external_name(imported.path)] += 1
+
+
+# Who depends on whom, at three levels: unit (a package, or a directory), file and
+# class. Built once and never changed, so another thread may read it.
+class DependencyGraph:
+    def __init__(self, files: Mapping[str, FileFacts]) -> None:
+        self._files = dict(files)
+        self._out: dict[str, Edges] = {level: defaultdict(dict) for level in LEVELS}
+        self._in: dict[str, Edges] = {level: defaultdict(dict) for level in LEVELS}
+        self._external: dict[Node, Counter] = defaultdict(Counter)
+        self._children: dict[Node, list[Node]] = defaultdict(list)
+        self._parent: dict[Node, Node] = {}
+        self._line: dict[Node, int] = {}
+        self._components: dict[str, dict[Node, frozenset[Node]]] = {}
+        project = _Definitions(self._files)
+        for path, facts in sorted(self._files.items()):
+            self._add_structure(path, facts)
+        for path, facts in sorted(self._files.items()):
+            self._add_dependencies(path, facts, _reach(path, facts, project))
+
+    def _add_structure(self, path: str, facts: FileFacts) -> None:
+        unit, file = Node(UNIT, facts.unit), Node(FILE, path)
+        self._children[unit].append(file)
+        self._parent[file] = unit
+        for definition in facts.classes:
+            node = Node(CLASS, _class_key(facts.unit, definition.name))
+            self._children[file].append(node)
+            self._parent[node] = file
+            self._line[node] = definition.line
+
+    def _add_dependencies(self, path: str, facts: FileFacts, reach: _Reach) -> None:
+        unit, file = Node(UNIT, facts.unit), Node(FILE, path)
+        files_in_unit = Counter(target_unit for target_unit, _ in {(unit_name, found) for found, unit_name, _ in reach.targets})
+        for target_unit in reach.units | files_in_unit.keys():
+            if target_unit != facts.unit:
+                self._link(UNIT, unit, Node(UNIT, target_unit), max(files_in_unit[target_unit], 1))
+        for target_path, count in Counter(found for found, _, _ in reach.targets).items():
+            self._link(FILE, file, Node(FILE, target_path), count)
+        for own in facts.classes:
+            source = Node(CLASS, _class_key(facts.unit, own.name))
+            for _, target_unit, name in reach.targets:
+                self._link(CLASS, source, Node(CLASS, _class_key(target_unit, name)), 1)
+        for name, count in reach.external.items():
+            self._external[file][name] += count
+            self._external[unit][name] += count
+
+    def _link(self, level: str, source: Node, target: Node, weight: int) -> None:
+        self._out[level][source][target] = self._out[level][source].get(target, 0) + weight
+        self._in[level][target][source] = self._in[level][target].get(source, 0) + weight
+
+    @property
+    def empty(self) -> bool:
+        return not self._files
+
+    def has(self, node: Node) -> bool:
+        return node in self._children or node in self._parent
+
+    def nodes(self, level: str) -> list[Node]:
+        if level == UNIT:
+            return sorted(node for node in self._children if node.level == UNIT)
+        if level == FILE:
+            return sorted(Node(FILE, path) for path in self._files)
+        return sorted(node for node in self._parent if node.level == CLASS)
+
+    def outgoing(self, node: Node) -> list[Link]:
+        return _links(self._out[node.level].get(node, {}))
+
+    def incoming(self, node: Node) -> list[Link]:
+        return _links(self._in[node.level].get(node, {}))
+
+    def externals(self, node: Node) -> list[tuple[str, int]]:
+        return sorted(self._external[node].items(), key=lambda item: (-item[1], item[0]))
+
+    def children(self, node: Node) -> list[Node]:
+        return list(self._children.get(node, []))
+
+    def parent(self, node: Node) -> Node | None:
+        return self._parent.get(node)
+
+    def paths_of(self, node: Node) -> list[str]:
+        if node.level == UNIT:
+            return [child.key for child in self._children.get(node, [])]
+        file = node if node.level == FILE else self._parent.get(node)
+        return [file.key] if file is not None else []
+
+    def line_of(self, node: Node) -> int | None:
+        return self._line.get(node)
+
+    def unit_of(self, path: str) -> Node | None:
+        return self._parent.get(Node(FILE, path))
+
+    def degree(self, node: Node) -> int:
+        return sum(link.weight for link in self.outgoing(node) + self.incoming(node))
+
+    def most_connected(self, nodes: Iterable[Node]) -> Node | None:
+        return min(nodes, key=lambda node: (-self.degree(node), node.name), default=None)
+
+    # The other nodes of the same level that reach this one and are reached by it, directly or not.
+    def cycle_members(self, node: Node) -> frozenset[Node]:
+        return self._component_of(node) - {node}
+
+    def cyclic_nodes(self, level: str) -> list[Node]:
+        return [node for node in self.nodes(level) if self.cycle_members(node)]
+
+    def _component_of(self, node: Node) -> frozenset[Node]:
+        if node.level not in self._components:
+            self._components[node.level] = _components(self._out[node.level], self.nodes(node.level))
+        return self._components[node.level].get(node, frozenset({node}))
+
+
+def _links(edges: Mapping[Node, int]) -> list[Link]:
+    return sorted((Link(node, weight) for node, weight in edges.items()), key=lambda link: (-link.weight, link.node.name))
+
+
+# Tarjan's algorithm with a stack of its own, since a chain of thousands of files
+# would overflow the recursion limit.
+def _components(edges: Mapping[Node, Mapping[Node, int]], nodes: Iterable[Node]) -> dict[Node, frozenset[Node]]:
+    index: dict[Node, int] = {}
+    low: dict[Node, int] = {}
+    stack: list[Node] = []
+    on_stack: set[Node] = set()
+    result: dict[Node, frozenset[Node]] = {}
+    for root in nodes:
+        if root in index:
+            continue
+        index[root] = low[root] = len(index)
+        stack.append(root)
+        on_stack.add(root)
+        work = [(root, iter(edges.get(root, ())))]
+        while work:
+            node, neighbours = work[-1]
+            for neighbour in neighbours:
+                if neighbour not in index:
+                    index[neighbour] = low[neighbour] = len(index)
+                    stack.append(neighbour)
+                    on_stack.add(neighbour)
+                    work.append((neighbour, iter(edges.get(neighbour, ()))))
+                    break
+                if neighbour in on_stack:
+                    low[node] = min(low[node], index[neighbour])
+            else:
+                work.pop()
+                if work:
+                    low[work[-1][0]] = min(low[work[-1][0]], low[node])
+                if low[node] == index[node]:
+                    members = []
+                    while (member := stack.pop()) != node:
+                        members.append(member)
+                    members.append(node)
+                    on_stack.difference_update(members)
+                    result.update(dict.fromkeys(members, frozenset(members)))
+    return result
