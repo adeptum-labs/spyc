@@ -52,6 +52,8 @@ class Picker(ModalScreen[Choice | None]):
     Picker CodeView { width: 55%; border-left: solid $primary; }
     Picker.-narrow OptionList { width: 100%; }
     Picker.-narrow CodeView { display: none; }
+    Picker.-plain OptionList { width: 100%; }
+    Picker.-plain CodeView { display: none; }
     """
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
@@ -84,6 +86,7 @@ class Picker(ModalScreen[Choice | None]):
 
     def on_mount(self) -> None:
         self.query_one(CodeView).can_focus = False
+        self.set_class(not getattr(self._source, "previews", True), "-plain")
         self.set_class(self.app.size.width < NARROW_WIDTH, "-narrow")
         self._search_now(self._initial)
 

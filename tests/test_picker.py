@@ -343,3 +343,14 @@ async def test_the_function_keys_switch_the_modes_where_the_terminal_swallows_al
         await pilot.press("f2", "f3")
         await pilot.pause()
         assert source.regex and source.word
+
+
+class PlainSource(FakeSource):
+    previews = False
+
+
+async def test_a_source_that_has_nothing_to_preview_gets_the_whole_width():
+    async with PickerApp(PlainSource()).run_test(size=(140, 40)) as pilot:
+        await pilot.pause()
+        assert not pilot.app.screen.query_one(CodeView).display
+        assert pilot.app.screen.query_one(OptionList).size.width > 100
