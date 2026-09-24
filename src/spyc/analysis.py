@@ -18,7 +18,7 @@
 # Contact: info@adeptum.se
 
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from tree_sitter import Parser
 
@@ -48,5 +48,6 @@ def analyse(text: str, language: Language | None) -> Analysis:
         return Analysis([], None)
     data = text.encode("utf-8")
     tree = Parser(grammar[0]).parse(data)
+    facts = facts_of(tree, compile_query(*imports)) if imports else None
     return Analysis(definitions_in(data, tree, *tags) if tags else [],
-                    facts_of(tree, compile_query(*imports)) if imports else None)
+                    None if facts is None else replace(facts, language=language.id))

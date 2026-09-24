@@ -22,8 +22,9 @@ import pytest
 
 from spyc.deps.facts import ClassDef, FileFacts, Import, facts_from_json, facts_to_json
 
-FACTS = FileFacts("com.acme", (ClassDef("A", 3), ClassDef("B", 9)), (Import("x.Y"), Import("x", wildcard=True, static=True)),
-                  frozenset({"Y", "Z"}))
+FACTS = FileFacts("com.acme", (ClassDef("A", 3), ClassDef("B", 9)),
+                  (Import("x.Y"), Import("x", wildcard=True, static=True), Import("m", level=2, names=("a", "b"))),
+                  frozenset({"Y", "Z"}), "java")
 
 
 def test_facts_survive_a_round_trip_through_json_and_the_json_is_stable():
@@ -41,11 +42,21 @@ def test_facts_that_are_not_facts_raise_the_errors_the_cache_reader_handles(data
 
 
 @pytest.mark.parametrize("data", [
-    {"unit": "", "classes": [["B", "7"]], "imports": [], "used": []},
-    {"unit": "", "classes": [[3, 7]], "imports": [], "used": []},
-    {"unit": "", "classes": [], "imports": [[123, False, False]], "used": []},
-    {"unit": "", "classes": [], "imports": [["a", "yes", False]], "used": []},
-    {"unit": "", "classes": [], "imports": [], "used": [1]}])
+    {"unit": "", "classes": [["B", "7"]], "imports": [], "used": [], "language": ""},
+    {"unit": "", "classes": [[3, 7]], "imports": [], "used": [], "language": ""},
+    {"unit": "", "classes": [], "imports": [[123, False, False, 0, []]], "used": [], "language": ""},
+    {"unit": "", "classes": [], "imports": [["a", "yes", False, 0, []]], "used": [], "language": ""},
+    {"unit": "", "classes": [], "imports": [], "used": [1], "language": ""}])
 def test_facts_with_the_wrong_kinds_of_values_are_refused_not_carried_into_the_graph(data):
+    with pytest.raises((TypeError, ValueError)):
+        facts_from_json(data)
+
+
+@pytest.mark.parametrize("data", [
+    {"unit": "", "classes": [], "imports": [["a", False, False, "1", []]], "used": [], "language": ""},
+    {"unit": "", "classes": [], "imports": [["a", False, False, 1, [3]]], "used": [], "language": ""},
+    {"unit": "", "classes": [], "imports": [], "used": [], "language": 4},
+    {"unit": "", "classes": [], "imports": [["a", False, False, 1]], "used": [], "language": ""}])
+def test_the_new_fields_are_checked_too(data):
     with pytest.raises((TypeError, ValueError)):
         facts_from_json(data)

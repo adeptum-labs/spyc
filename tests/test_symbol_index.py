@@ -175,7 +175,7 @@ def test_lookups_follow_the_files_as_they_are_indexed(project):
 
 from spyc.deps.facts import ClassDef, FileFacts, Import
 
-JAVA_FILES = {"a/A.java": "package a;\nimport b.B;\nclass A {}\n", "b/B.java": "package b;\nclass B {}\n", "c.py": "x = 1\n"}
+JAVA_FILES = {"a/A.java": "package a;\nimport b.B;\nclass A {}\n", "b/B.java": "package b;\nclass B {}\n", "README.md": "# T\n"}
 JAVA_PATHS = tuple(sorted(JAVA_FILES))
 
 
@@ -184,8 +184,8 @@ def test_the_facts_of_java_files_are_kept_and_files_without_import_queries_have_
     index = SymbolIndex(tmp_path)
     index.update(JAVA_PATHS)
     assert index.facts() == {
-        "a/A.java": FileFacts("a", (ClassDef("A", 3),), (Import("b.B"),), frozenset({"B", "A"})),
-        "b/B.java": FileFacts("b", (ClassDef("B", 2),), (), frozenset({"B"}))}
+        "a/A.java": FileFacts("a", (ClassDef("A", 3),), (Import("b.B"),), frozenset({"B", "A"}), "java"),
+        "b/B.java": FileFacts("b", (ClassDef("B", 2),), (), frozenset({"B"}), "java")}
 
 
 def test_facts_come_back_from_the_cache_without_parsing_and_files_that_are_gone_lose_theirs(tmp_path, monkeypatch):

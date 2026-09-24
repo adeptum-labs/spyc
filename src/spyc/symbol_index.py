@@ -39,7 +39,7 @@ from spyc.symbols import Symbol
 log = logging.getLogger(__name__)
 MAX_SYMBOL_FILE = 1024 * 1024
 BINARY_PROBE = 8192
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 SIGNED_DISTRIBUTIONS = ("spyc", "tree-sitter")
 
 

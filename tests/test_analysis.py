@@ -44,9 +44,13 @@ def test_one_parse_gives_the_definitions_and_the_facts(monkeypatch):
 
 
 def test_a_language_with_definitions_only_has_no_facts_and_markdown_gives_headings():
-    assert analyse("def f(): pass\n", LANGUAGES_BY_ID["python"]).facts is None
+    assert analyse("f() { :; }\n", LANGUAGES_BY_ID["bash"]).facts is None
     assert [symbol.name for symbol in analyse("# T\n", LANGUAGES_BY_ID["markdown"]).symbols] == ["T"]
 
 
 def test_no_language_and_a_language_without_queries_give_nothing():
     assert analyse("x", None).symbols == [] and analyse("a = 1\n", LANGUAGES_BY_ID["yaml"]).facts is None
+
+
+def test_the_facts_say_which_language_they_come_from():
+    assert analyse(JAVA, LANGUAGES_BY_ID["java"]).facts.language == "java"
