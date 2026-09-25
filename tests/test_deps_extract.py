@@ -164,3 +164,50 @@ def test_typescript_and_tsx_give_the_same_and_the_forms_of_typescript():
 def test_script_facts_have_no_package_classes_or_used_names():
     result = facts("javascript", "import a from './a';\nclass A {}\n")
     assert (result.unit, result.classes, result.used) == ("", (), frozenset())
+
+
+GO = """package main
+
+import (
+    "fmt"
+    str "strings"
+    . "example.com/dot"
+    _ "example.com/blank"
+    "example.com/mod/pkg/api/v2"
+    "gopkg.in/yaml.v3"
+)
+import "os"
+
+func Run() { fmt.Println(str.ToUpper("x")); api.Do(); yaml.Marshal(1) }
+type T struct{}
+type ( A int; B string )
+type Alias = int
+const C = 1
+const ( D = 1; E = 2 )
+var V, W = 2, 3
+var ( X = 1; Y = 2 )
+func (t T) M() {}
+"""
+
+
+def test_go_imports_carry_the_names_used_through_them_and_dot_imports_are_wildcards():
+    result = facts("go", GO)
+    assert [(imported.path, imported.wildcard, imported.names) for imported in result.imports] == [
+        ("fmt", False, ("Println",)), ("strings", False, ("ToUpper",)), ("example.com/dot", True, ()),
+        ("example.com/blank", False, ()), ("example.com/mod/pkg/api/v2", False, ("Do",)),
+        ("gopkg.in/yaml.v3", False, ("Marshal",)), ("os", False, ())]
+
+
+def test_go_files_define_their_top_level_names_and_not_their_methods():
+    result = facts("go", GO)
+    assert result.defines == {"Run", "T", "A", "B", "Alias", "C", "D", "E", "V", "W", "X", "Y"}
+    assert result.classes == ()
+
+
+def test_a_go_file_with_thousands_of_imports_selectors_and_definitions_is_capped():
+    source = ("package p\nimport (\n" + "".join(f'    a{index} "x.com/p{index}"\n' for index in range(MAX_IMPORTS + 50)) + ")\n"
+              + "".join(f"const K{index} = 1\n" for index in range(MAX_USED + 50))
+              + "func f() {\n" + "".join(f"    a0.N{index}()\n" for index in range(MAX_USED + 50)) + "}\n")
+    result = facts("go", source)
+    assert len(result.imports) == MAX_IMPORTS and len(result.defines) == MAX_USED
+    assert len(result.imports[0].names) <= MAX_USED

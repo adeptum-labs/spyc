@@ -18,6 +18,8 @@
 # Contact: info@adeptum.se
 
 
+import re
+
 from tree_sitter import QueryCursor
 
 from spyc.deps.facts import ClassDef, FileFacts, Import
@@ -25,10 +27,29 @@ from spyc.deps.facts import ClassDef, FileFacts, Import
 MAX_IMPORTS = 5000
 MAX_USED = 2000
 MAX_CLASSES = 100
+VERSION = re.compile(r"^v[0-9]+$")
+VERSION_SUFFIX = re.compile(r"\.v[0-9]+$")
 
 
 def _text(node) -> str:
     return "".join(node.text.decode("utf-8", errors="replace").split())
+
+
+# The name a Go package is called by when its import gives none: the last segment, but not a version.
+def _default_alias(path: str) -> str:
+    segments = path.split("/")
+    name = segments[-2] if len(segments) > 1 and VERSION.match(segments[-1]) else segments[-1]
+    return VERSION_SUFFIX.sub("", name)
+
+
+# import str "strings"  /  import . "x"  /  import _ "x"  /  import "x/y/v2"
+def _go_import(spec, selectors: dict[str, set[str]]) -> Import:
+    path = _text(spec.child_by_field_name("path")).strip("\"`")
+    name = spec.child_by_field_name("name")
+    dotted = name is not None and name.type == "dot"
+    alias = None if name is not None and name.type in ("dot", "blank_identifier") else (
+        _text(name) if name is not None else _default_alias(path))
+    return Import(path, dotted, False, 0, tuple(sorted(selectors.get(alias, ()))))
 
 
 # from a.b import c as d, e   /   from ..pkg import x   /   from . import y   /   from a import *
@@ -50,6 +71,7 @@ def _from_import(statement) -> Import:
 # names it uses (identifier nodes only, so comments and strings do not count).
 def facts_of(tree, query) -> FileFacts:
     unit, classes, imports, used = "", [], [], set()
+    specs, selectors, selected, defines = [], {}, 0, set()
     for _, captures in QueryCursor(query).matches(tree.root_node):
         if "package" in captures:
             unit = _text(captures["package"][0])
@@ -63,8 +85,20 @@ def facts_of(tree, query) -> FileFacts:
         elif "path" in captures:
             if len(imports) < MAX_IMPORTS:
                 imports.append(Import(_text(captures["path"][0]), "wildcard" in captures, "static" in captures))
+        elif "spec" in captures:
+            if len(specs) < MAX_IMPORTS:
+                specs.append(captures["spec"][0])
+        elif "operand" in captures:
+            if selected < MAX_USED:
+                field, names = _text(captures["field"][0]), selectors.setdefault(_text(captures["operand"][0]), set())
+                selected += field not in names
+                names.add(field)
+        elif "define" in captures:
+            if len(defines) < MAX_USED:
+                defines.add(_text(captures["define"][0]))
         elif len(used) < MAX_USED:
             name = captures["name"][0].text.decode("utf-8", errors="replace")
             if name[:1].isupper():
                 used.add(name)
-    return FileFacts(unit, tuple(classes), tuple(imports), frozenset(used))
+    imports += (_go_import(spec, selectors) for spec in specs)
+    return FileFacts(unit, tuple(classes), tuple(imports), frozenset(used), defines=frozenset(defines))

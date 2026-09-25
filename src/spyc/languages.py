@@ -68,7 +68,8 @@ TAGS = {
 }
 # Queries that find the package, the classes and the imports of a file, for the dependency graph.
 IMPORTS = {
-    "java": (("spyc.syntax", "queries/java/imports.scm"),),
+    "go": (("spyc.syntax", "queries/go/imports.scm"),),
+    "java":(("spyc.syntax", "queries/java/imports.scm"),),
     "kotlin": (("spyc.syntax", "queries/kotlin/imports.scm"),),
     "python": (("spyc.syntax", "queries/python/imports.scm"),),
     "javascript": (("spyc.syntax", "queries/javascript/imports.scm"),),

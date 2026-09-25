@@ -260,3 +260,40 @@ def test_thousands_of_python_files_and_a_file_with_thousands_of_imports_build_qu
     started = time.perf_counter()
     graph = DependencyGraph(files)
     assert len(graph.outgoing(Node(FILE, "big.py"))) == 3000 and time.perf_counter() - started < 5
+
+
+def go_file(imports=(), defines=(), language="go"):
+    return FileFacts("", (), tuple(imports), frozenset(), language, frozenset(defines))
+
+
+GO_PROJECT = {
+    "go.mod": go_file([Import("example.com/proj")], language="gomod"),
+    "cmd/app/main.go": go_file([Import("example.com/proj/pkg/api", names=("Handle",)), Import("example.com/proj/pkg/store"),
+                                Import("fmt"), Import("github.com/spf13/cobra")], ["main"]),
+    "pkg/api/handler.go": go_file([Import("example.com/proj/pkg/store", names=("Open",))], ["Handle"]),
+    "pkg/store/store.go": go_file([], ["Open"]),
+}
+
+
+def test_go_files_reach_the_files_that_define_what_they_use_and_the_directories_of_the_packages_they_import():
+    graph = DependencyGraph(GO_PROJECT)
+    assert "go.mod" not in [node.key for node in graph.nodes(FILE)]
+    assert names(graph.outgoing(Node(FILE, "cmd/app/main.go"))) == [("handler.go", 1)]
+    assert [(link.node.key, link.weight) for link in graph.outgoing(Node(UNIT, "cmd/app"))] == [("pkg/api", 1), ("pkg/store", 1)]
+    assert names(graph.outgoing(Node(FILE, "pkg/api/handler.go"))) == [("store.go", 1)]
+    assert graph.externals(Node(FILE, "cmd/app/main.go")) == [("github.com/spf13/cobra", 1)]
+    assert graph.kind_of(Node(UNIT, "pkg/api")) == "directory"
+
+
+def test_a_project_of_only_a_module_file_has_no_graph_and_a_language_without_a_handler_gives_no_edges():
+    assert DependencyGraph({"go.mod": go_file([Import("x")], language="gomod")}).empty
+    graph = DependencyGraph({"a.zig": FileFacts("", (), (Import("b"),), frozenset(), "zig"), "b.zig": FileFacts(language="zig")})
+    assert graph.outgoing(Node(FILE, "a.zig")) == [] and graph.externals(Node(FILE, "a.zig")) == []
+
+
+def test_a_go_package_in_the_root_directory_is_the_dot_unit_and_a_package_never_depends_on_itself():
+    files = {"go.mod": go_file([Import("x.io/m")], language="gomod"), "main.go": go_file([Import("x.io/m/lib")], ["main"]),
+             "lib/lib.go": go_file([Import("x.io/m/lib"), Import("x.io/m")], ["Lib"])}
+    graph = DependencyGraph(files)
+    assert names(graph.outgoing(Node(UNIT, "."))) == [("lib", 1)] and names(graph.outgoing(Node(UNIT, "lib"))) == [(".", 1)]
+    assert graph.cycle_members(Node(UNIT, ".")) == {Node(UNIT, "lib")}

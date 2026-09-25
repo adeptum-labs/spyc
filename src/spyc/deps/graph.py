@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from itertools import islice
 
 from spyc.deps.facts import FileFacts, Import
+from spyc.deps.golang import GoModules
 from spyc.deps.javascript import ScriptModules
 from spyc.deps.python import PythonModules
 
@@ -85,6 +86,7 @@ class _Project:
         self.jvm = _Definitions(files)
         self.python = PythonModules(path for path, facts in files.items() if facts.language == "python")
         self.scripts = ScriptModules(path for path, facts in files.items() if facts.language in SCRIPTS)
+        self.go = GoModules(files)
 
 
 # What the project defines, to look imports up in. Where two files define the same
@@ -135,19 +137,48 @@ def _reach(path: str, facts: FileFacts, project: "_Project") -> _Reach:
     return reach
 
 
+def _add_file(reach: _Reach, project: "_Project", path: str, target: str | None) -> None:
+    if target is not None and target != path and target in project.files:
+        reach.targets.add((target, unit_key(target, project.files[target]), ""))
+
+
+def _count_external(reach: _Reach, external: str | None) -> None:
+    if external:
+        reach.external[external] += 1
+
+
+def _python(path: str, imported: Import, project: "_Project", reach: _Reach) -> None:
+    found, external = project.python.resolve(path, imported)
+    for target in found:
+        _add_file(reach, project, path, target)
+    _count_external(reach, external)
+
+
+def _script(path: str, imported: Import, project: "_Project", reach: _Reach) -> None:
+    target, external = project.scripts.resolve(path, imported.path)
+    _add_file(reach, project, path, target)
+    _count_external(reach, external)
+
+
+def _go(path: str, imported: Import, project: "_Project", reach: _Reach) -> None:
+    directory, files, external = project.go.resolve(path, imported)
+    if directory is not None:
+        reach.units.add(directory or ".")
+    for target in files:
+        _add_file(reach, project, path, target)
+    _count_external(reach, external)
+
+
+# A language without a handler is drawn as files without edges rather than read as something it is not.
+_RESOLVERS = {"python": _python, "go": _go, **dict.fromkeys(SCRIPTS, _script)}
+
+
 # Every language that is not a JVM one is drawn as files in directories, which the resolvers find.
 def _reach_files(path: str, facts: FileFacts, project: "_Project") -> _Reach:
     reach = _Reach(set(), set(), Counter())
-    for imported in facts.imports:
-        if facts.language == "python":
-            found, external = project.python.resolve(path, imported)
-        else:
-            target, external = project.scripts.resolve(path, imported.path)
-            found = {target} if target else set()
-        reach.targets |= {(target, unit_key(target, project.files[target]), "") for target in found
-                          if target != path and target in project.files}
-        if external:
-            reach.external[external] += 1
+    if (handler := _RESOLVERS.get(facts.language)) is not None:
+        for imported in facts.imports:
+            handler(path, imported, project, reach)
     return reach
 
 
@@ -172,7 +203,7 @@ def _follow(imported: Import, project: _Definitions, reach: _Reach, wildcards: s
 # class. Built once and never changed, so another thread may read it.
 class DependencyGraph:
     def __init__(self, files: Mapping[str, FileFacts], stop: Callable[[], bool] = lambda: False) -> None:
-        self._files = dict(files)
+        self._files = {path: facts for path, facts in files.items() if facts.language != "gomod"}
         self._out: dict[str, Edges] = {level: defaultdict(dict) for level in LEVELS}
         self._in: dict[str, Edges] = {level: defaultdict(dict) for level in LEVELS}
         self._external: dict[Node, Counter] = defaultdict(Counter)
@@ -181,7 +212,7 @@ class DependencyGraph:
         self._line: dict[Node, int] = {}
         self._components: dict[str, dict[Node, frozenset[Node]]] = {}
         self._directory_units: set[str] = set()
-        project = _Project(self._files)
+        project = _Project(dict(files))
         for path, facts in sorted(self._files.items()):
             self._add_structure(path, facts)
         for path, facts in sorted(self._files.items()):
