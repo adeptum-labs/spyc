@@ -28,11 +28,11 @@ from spyc.syntax.tree_sitter_highlighter import compile_query
 
 WITH_IMPORTS = [language for language in LANGUAGES if language.imports]
 REQUIRED = {"java": {"package", "class", "path", "wildcard", "name"}, "kotlin": {"package", "class", "path", "wildcard", "name"},
-            "python": {"path", "from"}}
+            "python": {"path", "from"}, "javascript": {"path"}, "typescript": {"path"}, "tsx": {"path"}}
 
 
 def test_the_languages_with_import_queries_are_the_ones_the_graph_reads_and_yaml_has_none():
-    assert {language.id for language in WITH_IMPORTS} == {"java", "kotlin", "python"}
+    assert {language.id for language in WITH_IMPORTS} == {"java", "kotlin", "python", "javascript", "typescript", "tsx"}
     assert load_imports(LANGUAGES_BY_ID["yaml"]) is None
 
 

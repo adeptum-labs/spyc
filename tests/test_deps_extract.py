@@ -131,3 +131,36 @@ def test_python_imports_give_the_module_the_dots_and_the_names_and_a_wildcard():
 def test_python_facts_have_no_package_and_no_classes():
     result = facts("python", "import os\nclass A: pass\n")
     assert result.unit == "" and result.classes == () and result.used == frozenset()
+
+
+JAVASCRIPT = """import a from './a';
+import {b} from "../b.js";
+export * from './c';
+export {d} from './d';
+const e = require('./e');
+const f = await import('./f');
+import './side';
+foo('./nope');
+require(dynamicName);
+const g = require('pkg');
+"""
+TYPESCRIPT = """import type {T} from './t';
+import x = require('./x');
+export type {U} from './u';
+import('./v');
+"""
+
+
+def test_javascript_gives_every_import_export_from_require_and_dynamic_import_with_a_literal():
+    assert [imported.path for imported in facts("javascript", JAVASCRIPT).imports] == [
+        "./a", "../b.js", "./c", "./d", "./e", "./f", "./side", "pkg"]
+
+
+def test_typescript_and_tsx_give_the_same_and_the_forms_of_typescript():
+    assert [imported.path for imported in facts("typescript", TYPESCRIPT).imports] == ["./t", "./x", "./u", "./v"]
+    assert [imported.path for imported in facts("tsx", "import React from 'react';\nimport {A} from './A';\n").imports] == ["react", "./A"]
+
+
+def test_script_facts_have_no_package_classes_or_used_names():
+    result = facts("javascript", "import a from './a';\nclass A {}\n")
+    assert (result.unit, result.classes, result.used) == ("", (), frozenset())
