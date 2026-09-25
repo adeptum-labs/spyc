@@ -53,10 +53,15 @@ def test_the_standard_library_is_not_external_and_other_names_are_counted_by_the
     assert resolve("app.py", Import("numpy", names=("array",))) == (set(), "numpy")
 
 
-def test_a_module_beside_the_importer_or_above_it_is_the_nearest_and_a_tie_gives_no_edge():
-    assert resolve("src/pkg/mod.py", Import("util")) == ({"src/pkg/util.py"}, None)
+def test_a_module_beside_a_script_or_above_it_is_the_nearest_and_a_tie_gives_no_edge():
+    assert resolve("tools/x.py", Import("util")) == ({"tools/util.py"}, None)
     assert resolve("src/other/x.py", Import("util")) == ({"src/other/util.py"}, None)
     assert resolve("app.py", Import("util")) == (set(), None)
+
+
+def test_a_module_beside_a_module_of_a_package_is_not_importable_by_its_bare_name():
+    assert "src/pkg/util.py" not in resolve("src/pkg/mod.py", Import("util"))[0]
+    assert resolve("src/pkg/mod.py", Import("", level=1, names=("util",))) == ({"src/pkg/util.py"}, None)
 
 
 def test_relative_imports_start_at_the_package_of_the_importer_and_climb_one_level_per_extra_dot():
@@ -96,3 +101,36 @@ def test_a_relative_import_in_a_file_at_the_root_finds_its_neighbours():
     assert modules.resolve("app.py", Import("", level=1, names=("x",))) == ({"x.py"}, None)
     assert modules.resolve("app.py", Import("pkg", level=1)) == ({"pkg/__init__.py"}, None)
     assert modules.resolve("app.py", Import("", level=1, wildcard=True)) == ({"__init__.py"}, None)
+
+
+SHADOWS = PythonModules([
+    "click/__init__.py", "click/types.py", "pkg/__init__.py", "pkg/compat/__init__.py", "pkg/compat/typing.py",
+    "vendor/lib/__init__.py", "vendor/lib/json.py", "app/main.py", "proj/__init__.py", "proj/celery.py",
+    "app1/__init__.py", "app1/tasks.py", "app1/redis.py", "app2/__init__.py", "app2/cache.py"])
+
+
+def test_a_standard_library_name_is_never_a_project_file_that_merely_ends_like_it():
+    assert SHADOWS.resolve("app/main.py", Import("types")) == (set(), None)
+    assert SHADOWS.resolve("app/main.py", Import("typing", names=("Any",))) == (set(), None)
+    assert SHADOWS.resolve("app/main.py", Import("json")) == (set(), None)
+
+
+def test_a_third_party_package_is_not_a_project_file_of_a_package_that_is_named_like_it():
+    assert SHADOWS.resolve("proj/celery.py", Import("celery", names=("Celery",))) == (set(), "celery")
+    assert SHADOWS.resolve("app1/tasks.py", Import("celery", names=("Celery",))) == (set(), "celery")
+    assert SHADOWS.resolve("app2/cache.py", Import("redis")) == (set(), "redis")
+    assert SHADOWS.resolve("app1/tasks.py", Import("redis")) == (set(), "redis")
+
+
+def test_the_full_dotted_path_of_a_module_still_names_it_from_anywhere():
+    assert SHADOWS.resolve("app/main.py", Import("click.types")) == ({"click/types.py"}, None)
+    assert SHADOWS.resolve("app/main.py", Import("pkg.compat.typing")) == ({"pkg/compat/typing.py"}, None)
+
+
+def test_a_chain_of_a_thousand_nested_directories_is_indexed_and_asked_without_a_quadratic_cost():
+    paths = ["/".join([f"d{level}" for level in range(depth)] + [f"m{depth}.py"]) for depth in range(1, 1000)]
+    started = time.perf_counter()
+    modules = PythonModules(paths)
+    assert modules.resolve(paths[-1], Import("unknown")) == (set(), "unknown")
+    assert all(modules.resolve(paths[-1], Import(f"unknown{index}")) == (set(), f"unknown{index}") for index in range(100))
+    assert time.perf_counter() - started < 3
