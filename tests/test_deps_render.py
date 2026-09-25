@@ -114,3 +114,10 @@ def test_a_long_selected_name_does_not_take_the_room_of_the_neighbours():
     layout = focus_layout(centre, [Entry(neighbour, 1)], [Entry(neighbour, 1)], 100)
     assert all(place.end - place.start >= 15 for place in layout.places)
     assert len(layout.lines[0].plain) <= 100
+
+
+def test_the_header_calls_a_directory_a_directory():
+    graph = DependencyGraph({"app.py": FileFacts("", (), (Import("pkg.mod"),), frozenset(), "python"),
+                             "pkg/mod.py": FileFacts("", (), (), frozenset(), "python")})
+    assert header_text(graph, Node(UNIT, "pkg"), printable).plain == "directory pkg · 0 out · 1 in"
+    assert header_text(graph, Node(UNIT, "."), printable).plain == "directory . · 1 out · 0 in"

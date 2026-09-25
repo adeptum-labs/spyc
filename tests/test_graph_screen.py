@@ -300,3 +300,11 @@ async def test_a_failure_is_shown_instead_of_waiting_for_ever_and_a_graph_that_a
         app.screen.set_graph(GRAPH)
         await pilot.pause()
         assert "boom" not in screen_text(app) and app.screen.centre == ORDER
+
+
+def test_the_node_picker_asks_for_a_directory_in_a_project_of_directories():
+    from spyc.deps.picker import NodeSource
+    graph = DependencyGraph({"pkg/mod.py": FileFacts("", (), (), frozenset(), "python")})
+    assert NodeSource(graph, UNIT).placeholder == "Find a directory by name"
+    assert NodeSource(GRAPH, UNIT).placeholder == "Find a package by name"
+    assert NodeSource(GRAPH, FILE).placeholder == "Find a file by name"

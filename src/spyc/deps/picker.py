@@ -34,8 +34,8 @@ class NodeSource:
     previews = False
 
     def __init__(self, graph: DependencyGraph, level: str) -> None:
-        self.placeholder = f"Find a {level} by name"
         self._nodes = graph.nodes(level)
+        self.placeholder = f"Find a {graph.kind_of(self._nodes[0]) if self._nodes else level} by name"
 
     def search(self, query: str) -> list[Item]:
         ranked, _ = rank_counted([node.name for node in self._nodes], query, LIST_LIMIT)

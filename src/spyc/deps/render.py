@@ -22,13 +22,12 @@ from dataclasses import dataclass
 
 from rich.text import Text
 
-from spyc.deps.graph import CLASS, FILE, UNIT, DependencyGraph, Link, Node
+from spyc.deps.graph import DependencyGraph, Link, Node
 
 WEIGHT_WIDTH = 5
 ARM = 2
 CYCLE_MARK = " ⟲"
 EXTERNALS_SHOWN = 3
-LEVEL_NAMES = {UNIT: "package", FILE: "file", CLASS: "class"}
 # Box-drawing glyph for a junction, by the directions it connects: up, down, left, right.
 GLYPHS = {
     (False, False, False, False): " ",
@@ -71,7 +70,7 @@ def entries_of(graph: DependencyGraph, centre: Node, links: list[Link], printabl
 def header_text(graph: DependencyGraph, centre: Node, printable) -> Text:
     members = graph.cycle_members(centre)
     externals = graph.externals(centre)
-    parts = [f"{LEVEL_NAMES[centre.level]} {printable(centre.name)}", f"{len(graph.outgoing(centre))} out",
+    parts = [f"{graph.kind_of(centre)} {printable(centre.name)}", f"{len(graph.outgoing(centre))} out",
              f"{len(graph.incoming(centre))} in"]
     if externals:
         shown = ", ".join(printable(name) for name, _ in externals[:EXTERNALS_SHOWN])

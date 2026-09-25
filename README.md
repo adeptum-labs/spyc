@@ -86,12 +86,16 @@ commit. The mouse works too: click to place the cursor, scroll to move.
 
 ## Dependencies
 
-`G` draws the dependencies of the project around one node: the packages that depend on it on the left, the ones it depends
-on on the right, with the number of files behind each edge and `⟲` for a package in a cycle with it. Down a level are the
-files of a package and the classes of a file. Java and Kotlin are read: the edges come from imports and from classes of
-the same package (or of a wildcard-imported package) that a file uses by name. What the project does not contain is
-counted on the node, not drawn. Reflection, dependency injection and dynamic loading are invisible, and a variable that
-shares its name with a class of the same package can add an edge that is not there.
+`G` draws the dependencies of the project around one node: what depends on it on the left, what it depends on on the right,
+with the number of files behind each edge and `⟲` for a node in a cycle with it. Java and Kotlin are drawn as packages, and
+Python, JavaScript, TypeScript and TSX as directories; down a level are the files, and for Java and Kotlin the classes.
+The edges come from imports, and for Java and Kotlin also from classes of the same package (or of a wildcard-imported
+package) that a file uses by name. Python modules are found by the end of their dotted path, from the directory of the
+importer upwards first, and imports of the standard library are not counted; script imports are the relative ones
+(`./x`, `../y`, `x.js` for `x.ts`, directory `index` files), and path aliases of a `tsconfig` are not followed. What the
+project does not contain is counted on the node, not drawn. Reflection, dependency injection, dynamic loading and imports
+whose name is computed are invisible, and a variable that shares its name with a class of the same package can add an edge
+that is not there.
 
 ## Coverage
 
