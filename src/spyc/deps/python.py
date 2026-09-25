@@ -97,9 +97,11 @@ class PythonModules:
                 return set()
             directory = posixpath.dirname(directory)
         base = posixpath.join(directory, *imported.path.split(".")) if imported.path else directory
-        module = next((found for found in (f"{base}.py", f"{base}/__init__.py") if found in self._paths), None)
+        module = next((found for found in ([f"{base}.py"] if base else []) + [posixpath.join(base, "__init__.py")]
+                       if found in self._paths), None)
         targets = {found for name in imported.names
-                   if (found := next((c for c in (f"{base}/{name}.py", f"{base}/{name}/__init__.py") if c in self._paths), None))}
+                   if (found := next((c for c in (posixpath.join(base, f"{name}.py"), posixpath.join(base, name, "__init__.py"))
+                                      if c in self._paths), None))}
         if imported.wildcard or (imported.names and not targets) or not imported.names:
             targets |= {module} if module else set()
         return targets

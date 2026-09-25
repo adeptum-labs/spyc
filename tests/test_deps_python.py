@@ -89,3 +89,10 @@ def test_a_project_of_a_hundred_thousand_modules_is_indexed_and_asked_quickly():
     big = PythonModules([f"a{index // 100}/b{index % 100}/m{index}.py" for index in range(100_000)])
     assert big.resolve("a1/b1/m101.py", Import("m5")) == ({"a0/b5/m5.py"}, None)
     assert time.perf_counter() - started < 5
+
+
+def test_a_relative_import_in_a_file_at_the_root_finds_its_neighbours():
+    modules = PythonModules(["app.py", "x.py", "pkg/__init__.py", "__init__.py"])
+    assert modules.resolve("app.py", Import("", level=1, names=("x",))) == ({"x.py"}, None)
+    assert modules.resolve("app.py", Import("pkg", level=1)) == ({"pkg/__init__.py"}, None)
+    assert modules.resolve("app.py", Import("", level=1, wildcard=True)) == ({"__init__.py"}, None)

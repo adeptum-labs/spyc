@@ -186,3 +186,77 @@ def test_a_build_that_is_asked_to_stop_stops():
     with pytest.raises(Stopped):
         DependencyGraph(files, stop=lambda: True)
     assert not DependencyGraph(files, stop=lambda: False).empty
+
+
+def python(imports=(), classes=()):
+    return FileFacts("", tuple(ClassDef(name, 1) for name in classes), tuple(imports), frozenset(), "python")
+
+
+def script(imports=(), language="typescript"):
+    return FileFacts("", (), tuple(Import(path) for path in imports), frozenset(), language)
+
+
+PYTHON_PROJECT = {
+    "app.py": python([Import("pkg.mod"), Import("requests.adapters"), Import("os")]),
+    "pkg/__init__.py": python(),
+    "pkg/mod.py": python([Import("", level=1, names=("helper",))]),
+    "pkg/helper.py": python([Import("pkg.mod")]),
+}
+
+
+def test_python_files_depend_on_the_files_they_import_and_their_directories_are_the_units():
+    graph = DependencyGraph(PYTHON_PROJECT)
+    root, pkg = Node(UNIT, "."), Node(UNIT, "pkg")
+    assert [node.key for node in graph.nodes(UNIT)] == [".", "pkg"]
+    assert names(graph.outgoing(root)) == [("pkg", 1)] and names(graph.incoming(pkg)) == [(".", 1)]
+    assert names(graph.outgoing(Node(FILE, "app.py"))) == [("mod.py", 1)]
+    assert graph.externals(Node(FILE, "app.py")) == [("requests", 1)] and graph.externals(root) == [("requests", 1)]
+
+
+def test_python_cycles_between_files_are_found_and_the_directory_has_none_with_itself():
+    graph = DependencyGraph(PYTHON_PROJECT)
+    mod = Node(FILE, "pkg/mod.py")
+    assert graph.cycle_members(mod) == {Node(FILE, "pkg/helper.py")} and graph.cycle_members(Node(UNIT, "pkg")) == frozenset()
+    assert graph.outgoing(Node(UNIT, "pkg")) == []
+
+
+def test_python_has_no_classes_so_the_file_is_the_lowest_level_and_the_nodes_are_called_directories():
+    graph = DependencyGraph(PYTHON_PROJECT)
+    assert graph.nodes(CLASS) == [] and graph.children(Node(FILE, "app.py")) == []
+    assert [graph.kind_of(node) for node in (Node(UNIT, "pkg"), Node(FILE, "app.py"))] == ["directory", "file"]
+
+
+def test_script_files_depend_on_the_files_they_name_and_json_and_style_sheets_are_no_nodes():
+    files = {"web/app.ts": script(["./util", "react", "./data.json", "./style.css"]), "web/util.ts": script(["@scope/pkg/x"]),
+             "web/old.js": script(["./util.js"], "javascript")}
+    graph = DependencyGraph(files)
+    assert names(graph.outgoing(Node(FILE, "web/app.ts"))) == [("util.ts", 1)]
+    assert names(graph.incoming(Node(FILE, "web/util.ts"))) == [("app.ts", 1), ("old.js", 1)]
+    assert graph.externals(Node(UNIT, "web")) == [("@scope/pkg", 1), ("react", 1)]
+    assert graph.outgoing(Node(UNIT, "web")) == []
+
+
+def test_a_project_of_several_languages_has_package_units_and_directory_units_side_by_side():
+    tools = {"tools/a.py": python([Import("b")]), "tools/b.py": python()}
+    graph = DependencyGraph({**SAMPLE, **tools, "main.py": python([Import("tools.a")])})
+    assert graph.kind_of(ORDER) == "package" and graph.kind_of(Node(UNIT, "tools")) == "directory"
+    assert names(graph.outgoing(Node(UNIT, "."))) == [("tools", 1)] and names(graph.outgoing(ORDER))[0] == ("com.acme.model", 2)
+    assert graph.outgoing(Node(FILE, "main.py"))[0].node == Node(FILE, "tools/a.py")
+
+
+def test_a_python_file_that_imports_itself_or_a_module_it_shadows_has_no_edge_to_itself():
+    files = {"a.py": python([Import("a"), Import("", level=1, names=("a",))])}
+    assert DependencyGraph(files).outgoing(Node(FILE, "a.py")) == []
+
+
+def test_files_with_control_characters_in_their_directory_names_are_nodes_like_any_other():
+    graph = DependencyGraph({"d\x1b[2J/a.py": python([Import("b")]), "d\x1b[2J/b.py": python()})
+    assert names(graph.outgoing(Node(FILE, "d\x1b[2J/a.py"))) == [("b.py", 1)]
+
+
+def test_thousands_of_python_files_and_a_file_with_thousands_of_imports_build_quickly():
+    files = {f"p{index // 50}/m{index}.py": python([Import(f"m{(index + 1) % 3000}")]) for index in range(3000)}
+    files["big.py"] = python([Import(f"m{index}") for index in range(5000)])
+    started = time.perf_counter()
+    graph = DependencyGraph(files)
+    assert len(graph.outgoing(Node(FILE, "big.py"))) == 3000 and time.perf_counter() - started < 5

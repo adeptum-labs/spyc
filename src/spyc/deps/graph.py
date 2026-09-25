@@ -18,15 +18,21 @@
 # Contact: info@adeptum.se
 
 
+import posixpath
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from itertools import islice
 
 from spyc.deps.facts import FileFacts, Import
+from spyc.deps.javascript import ScriptModules
+from spyc.deps.python import PythonModules
 
 UNIT, FILE, CLASS = "unit", "file", "class"
 LEVELS = (UNIT, FILE, CLASS)
+KIND_NAMES = {FILE: "file", CLASS: "class"}
+JVM = frozenset({"", "java", "kotlin"})
+SCRIPTS = frozenset({"javascript", "typescript", "tsx"})
 DEFAULT_UNIT = "(default)"
 EXTERNAL_SEGMENTS = 2
 # Every top-level class of a file gets every target of the file, which is the product of two
@@ -67,6 +73,20 @@ def _external_name(path: str) -> str:
     return ".".join(path.split(".")[:EXTERNAL_SEGMENTS])
 
 
+# A Java or Kotlin file is in the package it declares; any other file is in its directory.
+def unit_key(path: str, facts: FileFacts) -> str:
+    return facts.unit if facts.language in JVM else posixpath.dirname(path) or "."
+
+
+# What the project holds, for each language to look its imports up in.
+class _Project:
+    def __init__(self, files: Mapping[str, FileFacts]) -> None:
+        self.files = files
+        self.jvm = _Definitions(files)
+        self.python = PythonModules(path for path, facts in files.items() if facts.language == "python")
+        self.scripts = ScriptModules(path for path, facts in files.items() if facts.language in SCRIPTS)
+
+
 # What the project defines, to look imports up in. Where two files define the same
 # class of a package (main and test), the first path in order wins.
 class _Definitions:
@@ -74,6 +94,8 @@ class _Definitions:
         self.classes: dict[tuple[str, str], str] = {}
         self.units: set[str] = set()
         for path, facts in sorted(files.items()):
+            if facts.language not in JVM:
+                continue
             self.units.add(facts.unit)
             for definition in facts.classes:
                 self.classes.setdefault((facts.unit, definition.name), path)
@@ -98,16 +120,34 @@ class _Reach:
     external: Counter
 
 
-def _reach(path: str, facts: FileFacts, project: _Definitions) -> _Reach:
+def _reach(path: str, facts: FileFacts, project: "_Project") -> _Reach:
+    if facts.language not in JVM:
+        return _reach_files(path, facts, project)
     reach, wildcards = _Reach(set(), set(), Counter()), set()
     for imported in facts.imports:
-        _follow(imported, project, reach, wildcards)
+        _follow(imported, project.jvm, reach, wildcards)
     for unit in {facts.unit, *wildcards}:
         for name in facts.used:
-            if (found := project.classes.get((unit, name))) is not None:
+            if (found := project.jvm.classes.get((unit, name))) is not None:
                 reach.targets.add((found, unit, name))
     own = {(facts.unit, definition.name) for definition in facts.classes}
     reach.targets = {target for target in reach.targets if target[0] != path and (target[1], target[2]) not in own}
+    return reach
+
+
+# Every language that is not a JVM one is drawn as files in directories, which the resolvers find.
+def _reach_files(path: str, facts: FileFacts, project: "_Project") -> _Reach:
+    reach = _Reach(set(), set(), Counter())
+    for imported in facts.imports:
+        if facts.language == "python":
+            found, external = project.python.resolve(path, imported)
+        else:
+            target, external = project.scripts.resolve(path, imported.path)
+            found = {target} if target else set()
+        reach.targets |= {(target, unit_key(target, project.files[target]), "") for target in found
+                          if target != path and target in project.files}
+        if external:
+            reach.external[external] += 1
     return reach
 
 
@@ -140,7 +180,8 @@ class DependencyGraph:
         self._parent: dict[Node, Node] = {}
         self._line: dict[Node, int] = {}
         self._components: dict[str, dict[Node, frozenset[Node]]] = {}
-        project = _Definitions(self._files)
+        self._directory_units: set[str] = set()
+        project = _Project(self._files)
         for path, facts in sorted(self._files.items()):
             self._add_structure(path, facts)
         for path, facts in sorted(self._files.items()):
@@ -151,9 +192,11 @@ class DependencyGraph:
             self._components[level] = _components(self._out[level], self.nodes(level))
 
     def _add_structure(self, path: str, facts: FileFacts) -> None:
-        unit, file = Node(UNIT, facts.unit), Node(FILE, path)
+        unit, file = Node(UNIT, unit_key(path, facts)), Node(FILE, path)
         self._children[unit].append(file)
         self._parent[file] = unit
+        if facts.language not in JVM:
+            self._directory_units.add(unit.key)
         for definition in facts.classes:
             node = Node(CLASS, _class_key(facts.unit, definition.name))
             self._children[file].append(node)
@@ -161,10 +204,11 @@ class DependencyGraph:
             self._line[node] = definition.line
 
     def _add_dependencies(self, path: str, facts: FileFacts, reach: _Reach) -> None:
-        unit, file = Node(UNIT, facts.unit), Node(FILE, path)
+        own_unit = unit_key(path, facts)
+        unit, file = Node(UNIT, own_unit), Node(FILE, path)
         files_in_unit = Counter(target_unit for target_unit, _ in {(unit_name, found) for found, unit_name, _ in reach.targets})
         for target_unit in reach.units | files_in_unit.keys():
-            if target_unit != facts.unit:
+            if target_unit != own_unit:
                 self._link(UNIT, unit, Node(UNIT, target_unit), max(files_in_unit[target_unit], 1))
         for target_path, count in Counter(found for found, _, _ in reach.targets).items():
             self._link(FILE, file, Node(FILE, target_path), count)
@@ -182,6 +226,12 @@ class DependencyGraph:
     @property
     def empty(self) -> bool:
         return not self._files
+
+    # What to call a node: a package (Java, Kotlin) or a directory (the other languages), a file or a class.
+    def kind_of(self, node: Node) -> str:
+        if node.level != UNIT:
+            return KIND_NAMES[node.level]
+        return "directory" if node.key in self._directory_units else "package"
 
     def has(self, node: Node) -> bool:
         return node in self._children or node in self._parent
