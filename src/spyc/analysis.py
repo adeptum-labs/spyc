@@ -18,16 +18,19 @@
 # Contact: info@adeptum.se
 
 
+import re
 from dataclasses import dataclass, replace
 
 from tree_sitter import Parser
 
 from spyc.deps.extract import facts_of
-from spyc.deps.facts import FileFacts
-from spyc.languages import Language
+from spyc.deps.facts import FileFacts, Import
+from spyc.languages import GO_MODULE, Language
 from spyc.symbols import Symbol, definitions_in, headings_of
 from spyc.syntax.grammars import load_imports, load_tags
 from spyc.syntax.tree_sitter_highlighter import compile_query
+
+MODULE_LINE = re.compile(r'^module\s+"?([^\s"]+)"?', re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -36,12 +39,20 @@ class Analysis:
     facts: FileFacts | None
 
 
+# The module path is all the graph needs of a go.mod, so it is read as text, without a grammar.
+def _module_facts(text: str) -> FileFacts:
+    found = MODULE_LINE.search(text)
+    return FileFacts(language=GO_MODULE.id, imports=(Import(found[1]),) if found else ())
+
+
 # One parse serves the outline and the dependency graph.
 def analyse(text: str, language: Language | None) -> Analysis:
     if language is None:
         return Analysis([], None)
     if language.id == "markdown":
         return Analysis(headings_of(text), None)
+    if language.id == GO_MODULE.id:
+        return Analysis([], _module_facts(text))
     tags, imports = load_tags(language), load_imports(language)
     grammar = tags or imports
     if grammar is None:

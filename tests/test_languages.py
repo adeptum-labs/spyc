@@ -31,6 +31,7 @@ from spyc.languages import LANGUAGES, detect_language
     ("app.properties", "properties"), ("App.tsx", "tsx"), ("lib.hpp", "cpp"), ("x.h", "c"),
     ("Dockerfile", "dockerfile"), ("Dockerfile.dev", "dockerfile"), ("CMakeLists.txt", "cmake"),
     ("Makefile", "make"), (".bashrc", "bash"), ("README.MD", "markdown"), ("Cargo.lock", "toml"),
+    ("go.mod", "gomod"), ("sub/go.mod", "gomod"),
 ])
 def test_registry_languages_by_name_and_extension(path, expected):
     assert detect_language(path).id == expected

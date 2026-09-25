@@ -20,7 +20,7 @@
 
 import spyc.analysis
 from spyc.analysis import analyse
-from spyc.languages import LANGUAGES_BY_ID
+from spyc.languages import GO_MODULE, LANGUAGES_BY_ID
 
 JAVA = "package a.b;\nimport c.D;\npublic class A { void m() {} }\n"
 
@@ -54,3 +54,11 @@ def test_no_language_and_a_language_without_queries_give_nothing():
 
 def test_the_facts_say_which_language_they_come_from():
     assert analyse(JAVA, LANGUAGES_BY_ID["java"]).facts.language == "java"
+
+
+def test_a_go_module_file_gives_its_module_path_without_a_parse():
+    result = analyse("// comment\nmodule example.com/acme/proj // trailing\n\ngo 1.22\nrequire x.y/z v1.0.0\n", GO_MODULE)
+    assert result.symbols == [] and result.facts.language == "gomod"
+    assert [imported.path for imported in result.facts.imports] == ["example.com/acme/proj"]
+    assert analyse("go 1.22\n", GO_MODULE).facts.imports == ()
+    assert analyse('module "quoted/path"\n', GO_MODULE).facts.imports[0].path == "quoted/path"

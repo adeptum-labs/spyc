@@ -33,13 +33,14 @@ from pathlib import Path
 from spyc.analysis import Analysis, analyse
 from spyc.deps.facts import FileFacts, facts_from_json, facts_to_json
 from spyc.fileio import read_limited
-from spyc.languages import Language, detect_language
+from spyc.languages import GO_MODULE, Language, detect_language
 from spyc.symbols import Symbol
 
 log = logging.getLogger(__name__)
 MAX_SYMBOL_FILE = 1024 * 1024
 BINARY_PROBE = 8192
-CACHE_VERSION = 4
+CACHE_VERSION = 5
+INDEXED_WITHOUT_QUERIES = frozenset({"markdown", GO_MODULE.id})
 SIGNED_DISTRIBUTIONS = ("spyc", "tree-sitter")
 
 
@@ -72,7 +73,7 @@ def _is_heading(symbol: Symbol) -> bool:
 
 def _indexable(path: str) -> Language | None:
     language = detect_language(path)
-    return language if language is not None and (language.tags or language.imports or language.id == "markdown") else None
+    return language if language is not None and (language.tags or language.imports or language.id in INDEXED_WITHOUT_QUERIES) else None
 
 
 # The definitions and the facts for the dependency graph of every file of the

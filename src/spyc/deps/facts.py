@@ -40,8 +40,8 @@ class ClassDef:
 
 
 # What one file says about its place in the project: the package (empty for none), the
-# top-level types it defines, what it imports, the capitalised names it uses and the
-# language it is written in.
+# top-level types it defines, what it imports, the capitalised names it uses, the
+# language it is written in and, for Go, the top-level names it declares.
 @dataclass(frozen=True)
 class FileFacts:
     unit: str = ""
@@ -49,12 +49,13 @@ class FileFacts:
     imports: tuple[Import, ...] = ()
     used: frozenset[str] = frozenset()
     language: str = ""
+    defines: frozenset[str] = frozenset()
 
 
 def facts_to_json(facts: FileFacts) -> dict:
     return {"unit": facts.unit, "classes": [[definition.name, definition.line] for definition in facts.classes],
             "imports": [[i.path, i.wildcard, i.static, i.level, list(i.names)] for i in facts.imports],
-            "used": sorted(facts.used), "language": facts.language}
+            "used": sorted(facts.used), "language": facts.language, "defines": sorted(facts.defines)}
 
 
 # A cache is read back from disk, so what it holds is checked before the graph is built on it.
@@ -62,11 +63,11 @@ def facts_from_json(data: dict) -> FileFacts:
     classes = tuple(ClassDef(name, line) for name, line in data["classes"])
     imports = tuple(Import(path, wildcard, static, level, tuple(names))
                     for path, wildcard, static, level, names in data["imports"])
-    used, language = frozenset(data["used"]), data["language"]
+    used, language, defines = frozenset(data["used"]), data["language"], frozenset(data["defines"])
     if not (isinstance(data["unit"], str) and isinstance(language, str)
             and all(isinstance(c.name, str) and type(c.line) is int for c in classes)
             and all(isinstance(i.path, str) and type(i.wildcard) is bool and type(i.static) is bool
                     and type(i.level) is int and all(isinstance(name, str) for name in i.names) for i in imports)
-            and all(isinstance(name, str) for name in used)):
+            and all(isinstance(name, str) for name in used | defines)):
         raise TypeError("facts")
-    return FileFacts(data["unit"], classes, imports, used, language)
+    return FileFacts(data["unit"], classes, imports, used, language, defines)

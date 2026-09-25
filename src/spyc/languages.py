@@ -88,6 +88,8 @@ _DEFINED = (
     Language("css", "CSS", (".css",), lexer="css", **grammar("tree_sitter_css")),
     Language("dockerfile", "Dockerfile", (".dockerfile",), ("Dockerfile", "Containerfile"), lexer="docker"),
     Language("go", "Go", (".go",), lexer="go", **grammar("tree_sitter_go")),
+    # Pygments would take go.mod for Modula-2.
+    Language("gomod", "Go module", filenames=("go.mod",), lexer="text"),
     Language("groovy", "Groovy", (".groovy", ".gradle"), ("Jenkinsfile",), lexer="groovy"),
     Language("html", "HTML", (".html", ".htm"), lexer="html", **grammar("tree_sitter_html")),
     Language("java", "Java", (".java",), lexer="java", **grammar("tree_sitter_java")),
@@ -116,6 +118,7 @@ _DEFINED = (
 LANGUAGES = tuple(replace(language, tags=TAGS.get(language.id, ()), imports=IMPORTS.get(language.id, ()))
                   for language in _DEFINED)
 LANGUAGES_BY_ID = {language.id: language for language in LANGUAGES}
+GO_MODULE = LANGUAGES_BY_ID["gomod"]
 BY_EXTENSION = {extension: language for language in LANGUAGES for extension in language.extensions}
 BY_FILENAME = {filename: language for language in LANGUAGES for filename in language.filenames}
 BY_INTERPRETER = {interpreter: language for language in LANGUAGES for interpreter in language.interpreters}

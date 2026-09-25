@@ -26,6 +26,7 @@ import pytest
 
 import spyc.symbol_index
 from repos import write_files
+from spyc.languages import detect_language
 from spyc.symbol_index import Located, SymbolIndex, default_cache_path
 from spyc.symbols import Symbol
 
@@ -223,3 +224,12 @@ def test_a_cache_whose_facts_have_the_wrong_kinds_of_values_is_ignored_and_the_f
     later = SymbolIndex(tmp_path / "p", cache)
     later.update(("a/A.java",))
     assert later.facts()["a/A.java"].imports == (Import("b.B"),)
+
+
+def test_a_go_module_file_is_indexed_for_its_module_path_and_is_not_taken_for_modula_2(tmp_path):
+    write_files(tmp_path / "project", {"go.mod": "module example.com/x\n", "sub/go.mod": "module example.com/x/sub\n",
+                                       "main.go": "package main\n"})
+    index = SymbolIndex(tmp_path / "project")
+    index.update(("go.mod", "main.go", "sub/go.mod"))
+    assert [index.facts()[path].imports[0].path for path in ("go.mod", "sub/go.mod")] == ["example.com/x", "example.com/x/sub"]
+    assert detect_language("go.mod").id == "gomod"
