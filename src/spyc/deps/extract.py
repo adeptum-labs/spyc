@@ -122,6 +122,9 @@ def facts_of(tree, query) -> FileFacts:
         elif "mod" in captures:
             if len(imports) < MAX_IMPORTS:
                 imports.append(Import(f"self::{_text(captures['mod'][0])}"))
+        elif "include" in captures:
+            if len(imports) < MAX_IMPORTS:
+                imports.append(Import(_text(captures["include"][0])))
         elif "spec" in captures:
             if len(specs) < MAX_IMPORTS:
                 specs.append(captures["spec"][0])

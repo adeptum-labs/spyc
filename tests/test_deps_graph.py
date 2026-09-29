@@ -312,3 +312,20 @@ def test_rust_files_depend_on_the_module_files_their_use_and_mod_lines_name_and_
     assert names(graph.outgoing(Node(FILE, "src/a/b.rs"))) == [("c.rs", 1)]
     assert graph.externals(Node(FILE, "src/lib.rs")) == [("serde", 1)]
     assert names(graph.outgoing(Node(UNIT, "src/a"))) == [("src", 1)]
+
+
+def c_file(includes=(), language="c"):
+    return FileFacts("", (), tuple(Import(text) for text in includes), frozenset(), language)
+
+
+def test_c_files_depend_on_the_headers_they_include_and_a_library_header_is_external():
+    files = {"app/main.c": c_file(['"local.h"', "<stdio.h>", "<boost/asio.hpp>", '"lib/z.h"']), "app/local.h": c_file(),
+             "include/lib/z.h": c_file(['"../util.h"']), "include/util.h": c_file(),
+             "src/a.cpp": c_file(['"a.hpp"'], "cpp"), "src/a.hpp": c_file(language="cpp")}
+    graph = DependencyGraph(files)
+    assert names(graph.outgoing(Node(FILE, "app/main.c"))) == [("local.h", 1), ("z.h", 1)]
+    assert names(graph.outgoing(Node(FILE, "include/lib/z.h"))) == [("util.h", 1)]
+    assert names(graph.outgoing(Node(FILE, "src/a.cpp"))) == [("a.hpp", 1)]
+    assert graph.externals(Node(FILE, "app/main.c")) == [("boost", 1)]
+    assert [(link.node.key, link.weight) for link in graph.outgoing(Node(UNIT, "app"))] == [("include/lib", 1)]
+    assert graph.kind_of(Node(UNIT, "app")) == "directory"

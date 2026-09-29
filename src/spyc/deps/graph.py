@@ -26,6 +26,7 @@ from itertools import islice
 
 from spyc.deps.facts import FileFacts, Import
 from spyc.deps.golang import GoModules
+from spyc.deps.includes import IncludeModules
 from spyc.deps.javascript import ScriptModules
 from spyc.deps.python import PythonModules
 from spyc.deps.rust import RustCrates
@@ -35,6 +36,7 @@ LEVELS = (UNIT, FILE, CLASS)
 KIND_NAMES = {FILE: "file", CLASS: "class"}
 JVM = frozenset({"", "java", "kotlin"})
 SCRIPTS = frozenset({"javascript", "typescript", "tsx"})
+C_FAMILY = frozenset({"c", "cpp"})
 DEFAULT_UNIT = "(default)"
 EXTERNAL_SEGMENTS = 2
 # Every top-level class of a file gets every target of the file, which is the product of two
@@ -89,6 +91,7 @@ class _Project:
         self.scripts = ScriptModules(path for path, facts in files.items() if facts.language in SCRIPTS)
         self.go = GoModules(files)
         self.rust = RustCrates(path for path, facts in files.items() if facts.language == "rust")
+        self.includes = IncludeModules(path for path, facts in files.items() if facts.language in C_FAMILY)
 
 
 # What the project defines, to look imports up in. Where two files define the same
@@ -177,8 +180,15 @@ def _rust(path: str, imported: Import, project: "_Project", reach: _Reach) -> No
     _count_external(reach, external)
 
 
+def _include(path: str, imported: Import, project: "_Project", reach: _Reach) -> None:
+    target, external = project.includes.resolve(path, imported.path)
+    _add_file(reach, project, path, target)
+    _count_external(reach, external)
+
+
 # A language without a handler is drawn as files without edges rather than read as something it is not.
-_RESOLVERS = {"python": _python, "go": _go, "rust": _rust, **dict.fromkeys(SCRIPTS, _script)}
+_RESOLVERS = {"python": _python, "go": _go, "rust": _rust, **dict.fromkeys(SCRIPTS, _script),
+              **dict.fromkeys(C_FAMILY, _include)}
 
 
 # Every language that is not a JVM one is drawn as files in directories, which the resolvers find.

@@ -239,3 +239,17 @@ def test_a_use_tree_of_thousands_of_names_and_one_nested_thousands_of_levels_dee
     assert len(facts("rust", wide).imports) == MAX_IMPORTS
     deep = "use " + "a::{" * 3000 + "b" + "}" * 3000 + ";\n"
     assert len(facts("rust", deep).imports) <= 1
+
+
+C_SOURCE = '#include "x/y.h"\n#include <stdio.h>\n#include <lib/z.h>\n#ifdef X\n#include "cond.h"\n#endif\n#include MACRO\nint main(){return 0;}\n'
+
+
+def test_c_and_cpp_includes_keep_their_delimiters_so_that_the_two_kinds_can_be_told_apart():
+    expected = ['"x/y.h"', "<stdio.h>", "<lib/z.h>", '"cond.h"']
+    assert [imported.path for imported in facts("c", C_SOURCE).imports] == expected
+    assert [imported.path for imported in facts("cpp", C_SOURCE).imports] == expected
+
+
+def test_a_c_file_with_thousands_of_includes_is_capped():
+    source = "".join(f'#include "h{index}.h"\n' for index in range(MAX_IMPORTS + 50))
+    assert len(facts("c", source).imports) == MAX_IMPORTS
