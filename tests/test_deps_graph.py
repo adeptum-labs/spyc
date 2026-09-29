@@ -297,3 +297,18 @@ def test_a_go_package_in_the_root_directory_is_the_dot_unit_and_a_package_never_
     graph = DependencyGraph(files)
     assert names(graph.outgoing(Node(UNIT, "."))) == [("lib", 1)] and names(graph.outgoing(Node(UNIT, "lib"))) == [(".", 1)]
     assert graph.cycle_members(Node(UNIT, ".")) == {Node(UNIT, "lib")}
+
+
+def rust_file(imports=()):
+    return FileFacts("", (), tuple(Import(path) for path in imports), frozenset(), "rust")
+
+
+def test_rust_files_depend_on_the_module_files_their_use_and_mod_lines_name_and_serde_is_external():
+    files = {"src/lib.rs": rust_file(["self::a", "self::c", "serde::Serialize", "std::io"]),
+             "src/a/mod.rs": rust_file(["self::b"]), "src/a/b.rs": rust_file(["crate::c::Thing", "super::super::c"]),
+             "src/c.rs": rust_file()}
+    graph = DependencyGraph(files)
+    assert names(graph.outgoing(Node(FILE, "src/lib.rs"))) == [("mod.rs", 1), ("c.rs", 1)]
+    assert names(graph.outgoing(Node(FILE, "src/a/b.rs"))) == [("c.rs", 1)]
+    assert graph.externals(Node(FILE, "src/lib.rs")) == [("serde", 1)]
+    assert names(graph.outgoing(Node(UNIT, "src/a"))) == [("src", 1)]

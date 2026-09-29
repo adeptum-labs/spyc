@@ -72,6 +72,7 @@ IMPORTS = {
     "java":(("spyc.syntax", "queries/java/imports.scm"),),
     "kotlin": (("spyc.syntax", "queries/kotlin/imports.scm"),),
     "python": (("spyc.syntax", "queries/python/imports.scm"),),
+    "rust": (("spyc.syntax", "queries/rust/imports.scm"),),
     "javascript": (("spyc.syntax", "queries/javascript/imports.scm"),),
     "typescript": (("spyc.syntax", "queries/typescript/imports.scm"),),
     "tsx": (("spyc.syntax", "queries/typescript/imports.scm"),),

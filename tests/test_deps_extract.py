@@ -211,3 +211,31 @@ def test_a_go_file_with_thousands_of_imports_selectors_and_definitions_is_capped
     result = facts("go", source)
     assert len(result.imports) == MAX_IMPORTS and len(result.defines) == MAX_USED
     assert len(result.imports[0].names) <= MAX_USED
+
+
+RUST = """use crate::a::b::Item;
+use super::x;
+use self::y as z;
+use std::collections::{HashMap, hash_map::Entry, self};
+use foo::*;
+use {bar, baz::qux};
+pub use quux::Thing;
+mod child;
+mod inline { pub fn f() {} }
+pub mod other;
+extern crate skipped;
+"""
+
+
+def test_rust_use_trees_are_expanded_and_mod_declarations_are_children_of_the_module():
+    assert [(imported.path, imported.wildcard) for imported in facts("rust", RUST).imports] == [
+        ("crate::a::b::Item", False), ("super::x", False), ("self::y", False), ("std::collections::HashMap", False),
+        ("std::collections::hash_map::Entry", False), ("std::collections", False), ("foo", True), ("bar", False),
+        ("baz::qux", False), ("quux::Thing", False), ("self::child", False), ("self::other", False)]
+
+
+def test_a_use_tree_of_thousands_of_names_and_one_nested_thousands_of_levels_deep_are_capped():
+    wide = "use a::{" + ", ".join(f"n{index}" for index in range(MAX_IMPORTS + 500)) + "};\n"
+    assert len(facts("rust", wide).imports) == MAX_IMPORTS
+    deep = "use " + "a::{" * 3000 + "b" + "}" * 3000 + ";\n"
+    assert len(facts("rust", deep).imports) <= 1

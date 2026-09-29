@@ -19,6 +19,8 @@
 
 
 import re
+from collections.abc import Iterator
+from itertools import islice
 
 from tree_sitter import QueryCursor
 
@@ -27,7 +29,9 @@ from spyc.deps.facts import ClassDef, FileFacts, Import
 MAX_IMPORTS = 5000
 MAX_USED = 2000
 MAX_CLASSES = 100
-VERSION = re.compile(r"^v[0-9]+$")
+MAX_USE_DEPTH = 16
+PATH_NODES = frozenset({"identifier", "crate", "self", "super", "scoped_identifier"})
+VERSION =re.compile(r"^v[0-9]+$")
 VERSION_SUFFIX = re.compile(r"\.v[0-9]+$")
 
 
@@ -67,6 +71,33 @@ def _from_import(statement) -> Import:
     return Import(path, wildcard, False, level, names)
 
 
+def _joined(prefix: str, text: str) -> str:
+    return f"{prefix}::{text}" if prefix and text else prefix or text
+
+
+# Every path a Rust use declaration names: use a::{b, c::d, self} is a::b, a::c::d and a. The tree is walked
+# with a stack of its own and not deeper than MAX_USE_DEPTH, since a hostile file can nest it thousands deep.
+def _use_paths(root) -> Iterator[tuple[str, bool]]:
+    stack = [(root, "", 0)]
+    while stack:
+        node, prefix, depth = stack.pop()
+        if node is None or depth > MAX_USE_DEPTH:
+            continue
+        if node.type in PATH_NODES:
+            text = _text(node)
+            yield (prefix if text == "self" and prefix else _joined(prefix, text)), False
+        elif node.type == "use_as_clause":
+            stack.append((node.child_by_field_name("path"), prefix, depth))
+        elif node.type == "use_wildcard":
+            inner = node.named_children[0] if node.named_children else None
+            yield _joined(prefix, _text(inner) if inner is not None else ""), True
+        elif node.type == "scoped_use_list":
+            path = node.child_by_field_name("path")
+            stack.append((node.child_by_field_name("list"), _joined(prefix, _text(path)) if path is not None else prefix, depth + 1))
+        elif node.type == "use_list":
+            stack.extend((child, prefix, depth + 1) for child in reversed(node.named_children))
+
+
 # The package of a file, the classes it defines, what it imports and the capitalised
 # names it uses (identifier nodes only, so comments and strings do not count).
 def facts_of(tree, query) -> FileFacts:
@@ -85,6 +116,12 @@ def facts_of(tree, query) -> FileFacts:
         elif "path" in captures:
             if len(imports) < MAX_IMPORTS:
                 imports.append(Import(_text(captures["path"][0]), "wildcard" in captures, "static" in captures))
+        elif "use" in captures:
+            paths = _use_paths(captures["use"][0].child_by_field_name("argument"))
+            imports += (Import(path, wildcard) for path, wildcard in islice(paths, MAX_IMPORTS - len(imports)))
+        elif "mod" in captures:
+            if len(imports) < MAX_IMPORTS:
+                imports.append(Import(f"self::{_text(captures['mod'][0])}"))
         elif "spec" in captures:
             if len(specs) < MAX_IMPORTS:
                 specs.append(captures["spec"][0])

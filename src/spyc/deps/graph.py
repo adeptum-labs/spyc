@@ -28,6 +28,7 @@ from spyc.deps.facts import FileFacts, Import
 from spyc.deps.golang import GoModules
 from spyc.deps.javascript import ScriptModules
 from spyc.deps.python import PythonModules
+from spyc.deps.rust import RustCrates
 
 UNIT, FILE, CLASS = "unit", "file", "class"
 LEVELS = (UNIT, FILE, CLASS)
@@ -87,6 +88,7 @@ class _Project:
         self.python = PythonModules(path for path, facts in files.items() if facts.language == "python")
         self.scripts = ScriptModules(path for path, facts in files.items() if facts.language in SCRIPTS)
         self.go = GoModules(files)
+        self.rust = RustCrates(path for path, facts in files.items() if facts.language == "rust")
 
 
 # What the project defines, to look imports up in. Where two files define the same
@@ -169,8 +171,14 @@ def _go(path: str, imported: Import, project: "_Project", reach: _Reach) -> None
     _count_external(reach, external)
 
 
+def _rust(path: str, imported: Import, project: "_Project", reach: _Reach) -> None:
+    target, external = project.rust.resolve(path, imported)
+    _add_file(reach, project, path, target)
+    _count_external(reach, external)
+
+
 # A language without a handler is drawn as files without edges rather than read as something it is not.
-_RESOLVERS = {"python": _python, "go": _go, **dict.fromkeys(SCRIPTS, _script)}
+_RESOLVERS = {"python": _python, "go": _go, "rust": _rust, **dict.fromkeys(SCRIPTS, _script)}
 
 
 # Every language that is not a JVM one is drawn as files in directories, which the resolvers find.
