@@ -25,12 +25,14 @@ from tree_sitter import Parser
 
 from spyc.deps.extract import facts_of
 from spyc.deps.facts import FileFacts, Import
-from spyc.languages import GO_MODULE, Language
+from spyc.languages import CARGO_MANIFEST, GO_MODULE, Language
 from spyc.symbols import Symbol, definitions_in, headings_of
 from spyc.syntax.grammars import load_imports, load_tags
 from spyc.syntax.tree_sitter_highlighter import compile_query
 
 MODULE_LINE = re.compile(r'^module\s+"?([^\s"]+)"?', re.MULTILINE)
+SECTION_LINE = re.compile(r"^\[+\s*([^\[\]]+?)\s*\]+")
+NAME_LINE = re.compile(r"""^name\s*=\s*["']([^"']+)["']""")
 
 
 @dataclass(frozen=True)
@@ -45,14 +47,30 @@ def _module_facts(text: str) -> FileFacts:
     return FileFacts(language=GO_MODULE.id, imports=(Import(found[1]),) if found else ())
 
 
+# The name a crate is used by in paths: that of its [lib] if it has one, else that of its [package].
+def _crate_facts(text: str) -> FileFacts:
+    names, section = {}, ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if header := SECTION_LINE.match(stripped):
+            section = header[1]
+        elif section in ("package", "lib") and (found := NAME_LINE.match(stripped)):
+            names.setdefault(section, found[1])
+    name = names.get("lib") or names.get("package")
+    return FileFacts(language=CARGO_MANIFEST.id, imports=(Import(name),) if name else ())
+
+
+MANIFESTS = {GO_MODULE.id: _module_facts, CARGO_MANIFEST.id: _crate_facts}
+
+
 # One parse serves the outline and the dependency graph.
 def analyse(text: str, language: Language | None) -> Analysis:
     if language is None:
         return Analysis([], None)
     if language.id == "markdown":
         return Analysis(headings_of(text), None)
-    if language.id == GO_MODULE.id:
-        return Analysis([], _module_facts(text))
+    if language.id in MANIFESTS:
+        return Analysis([], MANIFESTS[language.id](text))
     tags, imports = load_tags(language), load_imports(language)
     grammar = tags or imports
     if grammar is None:

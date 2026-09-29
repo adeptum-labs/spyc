@@ -48,3 +48,35 @@ def test_files_of_three_languages_go_from_the_source_through_the_index_and_its_c
     later.update(paths)
     check(DependencyGraph(later.facts()))
     assert {facts.language for facts in later.facts().values()} == {"python", "typescript", "java"}
+
+
+NATIVE_FILES = {
+    "go.mod": "module example.com/proj\n\ngo 1.22\n",
+    "cmd/main.go": 'package main\nimport "example.com/proj/pkg"\nfunc main() { pkg.Run() }\n',
+    "pkg/pkg.go": "package pkg\nfunc Run() {}\n", "pkg/other.go": "package pkg\nfunc Other() {}\n",
+    "rust/Cargo.toml": '[package]\nname = "tool-kit"\n', "rust/tests/it.rs": "use tool_kit::util::Tool;\n",
+    "rust/src/lib.rs": "mod util;\nuse crate::util::Tool;\nuse serde::Serialize;\n", "rust/src/util.rs": "pub struct Tool;\n",
+    "c/main.c": '#include "util.h"\n#include <stdio.h>\nint main(){return 0;}\n', "c/util.h": "int f(void);\n",
+}
+
+
+def check_native(graph):
+    assert not {"go.mod", "rust/Cargo.toml"} & {node.key for node in graph.nodes(FILE)}
+    assert [link.node.key for link in graph.outgoing(Node(FILE, "rust/tests/it.rs"))] == ["rust/src/util.rs"]
+    assert [link.node.key for link in graph.outgoing(Node(FILE, "cmd/main.go"))] == ["pkg/pkg.go"]
+    assert [link.node.key for link in graph.outgoing(Node(UNIT, "cmd"))] == ["pkg"]
+    assert [link.node.key for link in graph.outgoing(Node(FILE, "rust/src/lib.rs"))] == ["rust/src/util.rs"]
+    assert graph.externals(Node(FILE, "rust/src/lib.rs")) == [("serde", 1)]
+    assert [link.node.key for link in graph.outgoing(Node(FILE, "c/main.c"))] == ["c/util.h"]
+
+
+def test_go_rust_and_c_files_go_from_the_source_through_the_index_and_its_cache_into_the_graph(tmp_path):
+    write_files(tmp_path / "project", NATIVE_FILES)
+    paths, cache = tuple(sorted(NATIVE_FILES)), tmp_path / "cache.json"
+    first = SymbolIndex(tmp_path / "project", cache)
+    first.update(paths)
+    check_native(DependencyGraph(first.facts()))
+    later = SymbolIndex(tmp_path / "project", cache)
+    later.update(paths)
+    check_native(DependencyGraph(later.facts()))
+    assert {facts.language for facts in later.facts().values()} == {"gomod", "go", "cargo", "rust", "c"}

@@ -19,30 +19,31 @@
 
 
 import posixpath
-from collections.abc import Iterable
+from collections.abc import Mapping
 
-from spyc.deps.facts import Import
+from spyc.deps.facts import FileFacts, Import
 
 STD_CRATES = frozenset({"std", "core", "alloc"})
 RELATIVE = frozenset({"crate", "self", "super"})
 MAX_SUPER = 32
 
 
-# Which module file a Rust path names, worked out from the paths alone: the root of a crate is a lib.rs or
-# main.rs, a module is name.rs or name/mod.rs beside its parent, and a crate of the workspace is named by
-# the directory above its src.
+# Which module file a Rust path names, worked out from the paths and manifests alone: the root of a crate is
+# the lib.rs or main.rs in the src beside its Cargo.toml, which names it, and a module is name.rs or
+# name/mod.rs beside its parent.
 class RustCrates:
-    def __init__(self, paths: Iterable[str]) -> None:
-        self._paths = {path for path in paths if path.endswith(".rs")}
+    def __init__(self, files: Mapping[str, FileFacts]) -> None:
+        self._paths = {path for path, facts in files.items() if facts.language == "rust"}
         self._root_files = {path for path in self._paths if posixpath.basename(path) in ("lib.rs", "main.rs")}
         self._roots: dict[str, str] = {}
         for path in sorted(self._root_files, reverse=True):
             self._roots[posixpath.dirname(path)] = path
         self._crates: dict[str, str] = {}
-        for root_dir in self._roots:
-            parent = posixpath.dirname(root_dir)
-            if posixpath.basename(root_dir) == "src" and parent:
-                self._crates.setdefault(posixpath.basename(parent).replace("-", "_"), root_dir)
+        for path, facts in sorted(files.items()):
+            root_dir = posixpath.join(posixpath.dirname(path), "src")
+            if facts.language == "cargo" and root_dir in self._roots:
+                for imported in facts.imports:
+                    self._crates.setdefault(imported.path.replace("-", "_"), root_dir)
 
     # The module file the path reaches and, if it starts with a crate that the project does not hold, its name.
     def resolve(self, importer: str, imported: Import) -> tuple[str | None, str | None]:

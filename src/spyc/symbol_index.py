@@ -33,14 +33,14 @@ from pathlib import Path
 from spyc.analysis import Analysis, analyse
 from spyc.deps.facts import FileFacts, facts_from_json, facts_to_json
 from spyc.fileio import read_limited
-from spyc.languages import GO_MODULE, Language, detect_language
+from spyc.languages import CARGO_MANIFEST, GO_MODULE, Language, detect_language
 from spyc.symbols import Symbol
 
 log = logging.getLogger(__name__)
 MAX_SYMBOL_FILE = 1024 * 1024
 BINARY_PROBE = 8192
 CACHE_VERSION = 5
-INDEXED_WITHOUT_QUERIES = frozenset({"markdown", GO_MODULE.id})
+INDEXED_WITHOUT_QUERIES = frozenset({"markdown", GO_MODULE.id, CARGO_MANIFEST.id})
 SIGNED_DISTRIBUTIONS = ("spyc", "tree-sitter")
 
 

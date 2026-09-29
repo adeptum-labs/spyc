@@ -304,7 +304,8 @@ def rust_file(imports=()):
 
 
 def test_rust_files_depend_on_the_module_files_their_use_and_mod_lines_name_and_serde_is_external():
-    files = {"src/lib.rs": rust_file(["self::a", "self::c", "serde::Serialize", "std::io"]),
+    files = {"Cargo.toml": FileFacts(language="cargo", imports=(Import("app"),)),
+             "src/lib.rs": rust_file(["self::a", "self::c", "serde::Serialize", "std::io"]),
              "src/a/mod.rs": rust_file(["self::b"]), "src/a/b.rs": rust_file(["crate::c::Thing", "super::super::c"]),
              "src/c.rs": rust_file()}
     graph = DependencyGraph(files)
@@ -312,6 +313,12 @@ def test_rust_files_depend_on_the_module_files_their_use_and_mod_lines_name_and_
     assert names(graph.outgoing(Node(FILE, "src/a/b.rs"))) == [("c.rs", 1)]
     assert graph.externals(Node(FILE, "src/lib.rs")) == [("serde", 1)]
     assert names(graph.outgoing(Node(UNIT, "src/a"))) == [("src", 1)]
+    assert "Cargo.toml" not in [node.key for node in graph.nodes(FILE)]
+
+
+def test_a_project_of_only_manifests_has_no_graph():
+    files = {"go.mod": go_file([Import("x")], language="gomod"), "Cargo.toml": FileFacts(language="cargo", imports=(Import("y"),))}
+    assert DependencyGraph(files).empty
 
 
 def c_file(includes=(), language="c"):
@@ -329,3 +336,16 @@ def test_c_files_depend_on_the_headers_they_include_and_a_library_header_is_exte
     assert graph.externals(Node(FILE, "app/main.c")) == [("boost", 1)]
     assert [(link.node.key, link.weight) for link in graph.outgoing(Node(UNIT, "app"))] == [("include/lib", 1)]
     assert graph.kind_of(Node(UNIT, "app")) == "directory"
+
+
+def test_go_test_files_draw_file_edges_but_no_directory_edges_so_an_external_test_package_makes_no_cycle():
+    files = {"go.mod": go_file([Import("x.io/m")], language="gomod"),
+             "foo/foo.go": go_file([], ["Foo"]),
+             "foo/foo_test.go": go_file([Import("x.io/m/testutil", names=("New",)), Import("github.com/stretchr/testify/assert")]),
+             "testutil/util.go": go_file([Import("x.io/m/foo", names=("Foo",))], ["New"])}
+    graph = DependencyGraph(files)
+    assert names(graph.outgoing(Node(FILE, "foo/foo_test.go"))) == [("util.go", 1)]
+    assert graph.outgoing(Node(UNIT, "foo")) == [] and graph.cyclic_nodes(UNIT) == []
+    assert graph.externals(Node(FILE, "foo/foo_test.go")) == [("github.com/stretchr/testify", 1)]
+    assert graph.externals(Node(UNIT, "foo")) == []
+    assert [link.node.key for link in graph.incoming(Node(UNIT, "foo"))] == ["testutil"]

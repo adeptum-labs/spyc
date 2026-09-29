@@ -18,6 +18,8 @@
 # Contact: info@adeptum.se
 
 
+import pytest
+
 import spyc.analysis
 from spyc.analysis import analyse
 from spyc.languages import GO_MODULE, LANGUAGES_BY_ID
@@ -62,3 +64,20 @@ def test_a_go_module_file_gives_its_module_path_without_a_parse():
     assert [imported.path for imported in result.facts.imports] == ["example.com/acme/proj"]
     assert analyse("go 1.22\n", GO_MODULE).facts.imports == ()
     assert analyse('module "quoted/path"\n', GO_MODULE).facts.imports[0].path == "quoted/path"
+
+
+@pytest.mark.parametrize("manifest, expected", [
+    ('[package]\nname = "grep-regex"\nversion = "1"\n', ["grep-regex"]),
+    ('[package]\nname = "grep-regex"\n[lib]\nname = "custom"\n', ["custom"]),
+    ('[lib]\nname = "custom"\n[package]\nname = "grep-regex"\n', ["custom"]),
+    ("[package]\nname = 'single'\n", ["single"]),
+    ('[package]\nauthors = ["a", "b"]\nname = "after-array"\n', ["after-array"]),
+    ('[[bin]]\nname = "tool"\n[package]\nname = "real"\n', ["real"]),
+    ('[workspace]\nmembers = ["a"]\n[dependencies.serde]\nname = "not-this"\n', []),
+    ('[package]\nversion = "1"\n[[bin]]\nname = "only-a-bin"\n', []),
+    ("", []),
+])
+def test_a_cargo_manifest_gives_the_name_a_crate_is_used_by_without_a_parse(manifest, expected):
+    result = analyse(manifest, LANGUAGES_BY_ID["cargo"])
+    assert result.symbols == [] and result.facts.language == "cargo"
+    assert [imported.path for imported in result.facts.imports] == expected

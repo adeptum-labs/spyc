@@ -233,3 +233,10 @@ def test_a_go_module_file_is_indexed_for_its_module_path_and_is_not_taken_for_mo
     index.update(("go.mod", "main.go", "sub/go.mod"))
     assert [index.facts()[path].imports[0].path for path in ("go.mod", "sub/go.mod")] == ["example.com/x", "example.com/x/sub"]
     assert detect_language("go.mod").id == "gomod"
+
+
+def test_a_cargo_manifest_is_indexed_for_the_name_of_its_crate(tmp_path):
+    write_files(tmp_path / "project", {"Cargo.toml": '[package]\nname = "grep-regex"\n', "src/lib.rs": "pub fn f() {}\n"})
+    index = SymbolIndex(tmp_path / "project")
+    index.update(("Cargo.toml", "src/lib.rs"))
+    assert [imported.path for imported in index.facts()["Cargo.toml"].imports] == ["grep-regex"]

@@ -29,6 +29,7 @@ GRAMMAR_LANGUAGES = [language for language in LANGUAGES if language.grammar]
 SAMPLES = {
     "bash": ('echo "hi"', '"hi"', "string"),
     "c": ("int main() { return 0; }", "return", "keyword"),
+    "cargo": ('[package]\nversion = 1\n', "1", "number"),
     "cpp": ("class A { public: int x; };", "class", "keyword"),
     "css": ("a { color: red; }", "color", "property"),
     "go": ("package main\nfunc main() {}\n", "func", "keyword"),

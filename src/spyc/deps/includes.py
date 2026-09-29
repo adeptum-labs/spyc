@@ -25,6 +25,8 @@ from collections.abc import Iterable
 MAX_AMBIGUOUS = 50
 MAX_WALK = 32
 INCLUDE_DIRECTORIES = ("", "include", "inc", "src")
+# The header directories of the system say nothing about the project, as its other system headers do not.
+OPERATING_SYSTEM_DIRECTORIES = frozenset({"sys", "arpa", "netinet", "net", "linux", "asm", "bits"})
 
 
 def _shared_directories(path: str, here: str) -> int:
@@ -57,7 +59,8 @@ class IncludeModules:
         found = self._search(spec, here) or self._by_end(spec, here)
         if found is not None or quoted or "/" not in spec:
             return found, None
-        return None, spec.split("/")[0]
+        library = spec.split("/")[0]
+        return None, None if library in OPERATING_SYSTEM_DIRECTORIES else library
 
     def _search(self, spec: str, here: str) -> str | None:
         key = (spec, here)

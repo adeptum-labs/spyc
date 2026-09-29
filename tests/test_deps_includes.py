@@ -68,3 +68,12 @@ def test_a_thousand_nested_directories_are_no_trouble():
     deep = "/".join(f"d{index}" for index in range(1000))
     modules = IncludeModules([f"{deep}/main.c", "include/x.h"])
     assert modules.resolve(f"{deep}/main.c", '"x.h"') == ("include/x.h", None)
+
+
+@pytest.mark.parametrize("include", ["<sys/types.h>", "<netinet/in.h>", "<arpa/inet.h>", "<linux/limits.h>", "<bits/stdc++.h>"])
+def test_the_directories_of_the_operating_system_headers_are_not_libraries(include):
+    assert MODULES.resolve("app/main.c", include) == (None, None)
+
+
+def test_a_project_header_in_a_directory_named_like_a_system_one_is_still_found():
+    assert IncludeModules(["compat/sys/types.h", "a.c"]).resolve("a.c", "<sys/types.h>") == ("compat/sys/types.h", None)

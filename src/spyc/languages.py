@@ -85,6 +85,7 @@ _DEFINED = (
     Language("bash", "Bash", (".sh", ".bash", ".zsh"), (".bashrc", ".bash_profile", ".profile", ".zshrc", "PKGBUILD"),
              ("sh", "bash", "zsh", "dash", "ksh"), lexer="bash", **grammar("tree_sitter_bash")),
     Language("c", "C", (".c", ".h"), lexer="c", **grammar("tree_sitter_c")),
+    Language("cargo", "Cargo manifest", (), ("Cargo.toml",), lexer="toml", **grammar("tree_sitter_toml")),
     Language("cmake", "CMake", (".cmake",), ("CMakeLists.txt",), lexer="cmake"),
     Language("cpp", "C++", (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".ipp"), lexer="cpp",
              **grammar("tree_sitter_cpp", "language", ("tree_sitter_cpp", "queries/highlights.scm"),
@@ -123,6 +124,7 @@ LANGUAGES = tuple(replace(language, tags=TAGS.get(language.id, ()), imports=IMPO
                   for language in _DEFINED)
 LANGUAGES_BY_ID = {language.id: language for language in LANGUAGES}
 GO_MODULE = LANGUAGES_BY_ID["gomod"]
+CARGO_MANIFEST = LANGUAGES_BY_ID["cargo"]
 BY_EXTENSION = {extension: language for language in LANGUAGES for extension in language.extensions}
 BY_FILENAME = {filename: language for language in LANGUAGES for filename in language.filenames}
 BY_INTERPRETER = {interpreter: language for language in LANGUAGES for interpreter in language.interpreters}

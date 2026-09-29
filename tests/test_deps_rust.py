@@ -20,11 +20,21 @@
 
 import pytest
 
-from spyc.deps.facts import Import
+from spyc.deps.facts import FileFacts, Import
 from spyc.deps.rust import RustCrates
 
-CRATES = RustCrates(["src/lib.rs", "src/a/mod.rs", "src/a/b.rs", "src/c.rs", "crates/foo/src/lib.rs", "crates/foo/src/util.rs",
-                     "crates/foo-bar/src/main.rs", "tests/it.rs", "build.rs"])
+
+def crates_of(paths, manifests):
+    files = {path: FileFacts(language="rust") for path in paths}
+    files.update({path: FileFacts(language="cargo", imports=(Import(name),)) for path, name in manifests.items()})
+    return RustCrates(files)
+
+
+CRATES = crates_of(
+    ["src/lib.rs", "src/a/mod.rs", "src/a/b.rs", "src/c.rs", "crates/foo/src/lib.rs", "crates/foo/src/util.rs",
+     "crates/foo-bar/src/main.rs", "crates/matcher/src/lib.rs", "crates/regex/src/lib.rs", "tests/it.rs", "build.rs"],
+    {"Cargo.toml": "app", "crates/foo/Cargo.toml": "foo", "crates/foo-bar/Cargo.toml": "foo-bar",
+     "crates/matcher/Cargo.toml": "grep-matcher", "crates/regex/Cargo.toml": "grep-regex"})
 
 
 @pytest.mark.parametrize("importer, path, expected", [
@@ -38,7 +48,10 @@ CRATES = RustCrates(["src/lib.rs", "src/a/mod.rs", "src/a/b.rs", "src/c.rs", "cr
     ("src/a/b.rs", "std::io", (None, None)),
     ("src/a/b.rs", "core::fmt", (None, None)),
     ("tests/it.rs", "foo::util::thing", ("crates/foo/src/util.rs", None)),
+    ("tests/it.rs", "app::a::b::Item", ("src/a/b.rs", None)),
     ("src/lib.rs", "foo_bar::x", ("crates/foo-bar/src/main.rs", None)),
+    ("crates/regex/src/lib.rs", "grep_matcher::Matcher", ("crates/matcher/src/lib.rs", None)),
+    ("crates/foo/src/lib.rs", "regex::Regex", (None, "regex")),
     ("src/lib.rs", "serde::Serialize", (None, "serde")),
     ("src/lib.rs", "Direction::North", (None, None)),
     ("tests/it.rs", "crate::x", (None, None)),
@@ -55,8 +68,13 @@ def test_a_mod_declaration_finds_the_file_beside_it_in_both_layouts():
     assert CRATES.resolve("src/a/mod.rs", Import("self::b")) == ("src/a/b.rs", None)
 
 
+def test_a_crate_is_named_by_its_manifest_and_a_directory_named_like_a_crate_of_the_registry_is_not_that_crate():
+    without = crates_of(["crates/regex/src/lib.rs", "crates/x/src/lib.rs"], {})
+    assert without.resolve("crates/x/src/lib.rs", Import("regex::Regex")) == (None, "regex")
+
+
 def test_a_thousand_super_segments_and_a_thousand_nested_directories_are_no_trouble():
     assert CRATES.resolve("src/a/b.rs", Import("::".join(["super"] * 1000 + ["x"]))) == (None, None)
     deep = "/".join(f"d{index}" for index in range(1000))
-    crates = RustCrates(["src/lib.rs", f"src/{deep}/x.rs"])
+    crates = crates_of(["src/lib.rs", f"src/{deep}/x.rs"], {})
     assert crates.resolve(f"src/{deep}/x.rs", Import("crate::nothing")) == ("src/lib.rs", None)

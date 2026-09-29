@@ -37,6 +37,8 @@ KIND_NAMES = {FILE: "file", CLASS: "class"}
 JVM = frozenset({"", "java", "kotlin"})
 SCRIPTS = frozenset({"javascript", "typescript", "tsx"})
 C_FAMILY = frozenset({"c", "cpp"})
+# Files that only say what the project calls its packages and crates; they are not nodes.
+MANIFESTS = frozenset({"gomod", "cargo"})
 DEFAULT_UNIT = "(default)"
 EXTERNAL_SEGMENTS = 2
 # Every top-level class of a file gets every target of the file, which is the product of two
@@ -82,6 +84,12 @@ def unit_key(path: str, facts: FileFacts) -> str:
     return facts.unit if facts.language in JVM else posixpath.dirname(path) or "."
 
 
+# Go lets the tests of a package import packages that import it back, which is no cycle of the program;
+# so what the tests use is drawn between files but not between directories.
+def _is_go_test(path: str, facts: FileFacts) -> bool:
+    return facts.language == "go" and path.endswith("_test.go")
+
+
 # What the project holds, for each language to look its imports up in.
 class _Project:
     def __init__(self, files: Mapping[str, FileFacts]) -> None:
@@ -90,7 +98,7 @@ class _Project:
         self.python = PythonModules(path for path, facts in files.items() if facts.language == "python")
         self.scripts = ScriptModules(path for path, facts in files.items() if facts.language in SCRIPTS)
         self.go = GoModules(files)
-        self.rust = RustCrates(path for path, facts in files.items() if facts.language == "rust")
+        self.rust = RustCrates(files)
         self.includes = IncludeModules(path for path, facts in files.items() if facts.language in C_FAMILY)
 
 
@@ -221,7 +229,7 @@ def _follow(imported: Import, project: _Definitions, reach: _Reach, wildcards: s
 # class. Built once and never changed, so another thread may read it.
 class DependencyGraph:
     def __init__(self, files: Mapping[str, FileFacts], stop: Callable[[], bool] = lambda: False) -> None:
-        self._files = {path: facts for path, facts in files.items() if facts.language != "gomod"}
+        self._files = {path: facts for path, facts in files.items() if facts.language not in MANIFESTS}
         self._out: dict[str, Edges] = {level: defaultdict(dict) for level in LEVELS}
         self._in: dict[str, Edges] = {level: defaultdict(dict) for level in LEVELS}
         self._external: dict[Node, Counter] = defaultdict(Counter)
@@ -256,7 +264,8 @@ class DependencyGraph:
         own_unit = unit_key(path, facts)
         unit, file = Node(UNIT, own_unit), Node(FILE, path)
         files_in_unit = Counter(target_unit for target_unit, _ in {(unit_name, found) for found, unit_name, _ in reach.targets})
-        for target_unit in reach.units | files_in_unit.keys():
+        units = set() if _is_go_test(path, facts) else reach.units | files_in_unit.keys()
+        for target_unit in units:
             if target_unit != own_unit:
                 self._link(UNIT, unit, Node(UNIT, target_unit), max(files_in_unit[target_unit], 1))
         for target_path, count in Counter(found for found, _, _ in reach.targets).items():
@@ -266,7 +275,8 @@ class DependencyGraph:
             self._link(CLASS, Node(CLASS, _class_key(facts.unit, own.name)), Node(CLASS, _class_key(target_unit, name)), 1)
         for name, count in reach.external.items():
             self._external[file][name] += count
-            self._external[unit][name] += count
+            if not _is_go_test(path, facts):
+                self._external[unit][name] += count
 
     def _link(self, level: str, source: Node, target: Node, weight: int) -> None:
         self._out[level][source][target] = self._out[level][source].get(target, 0) + weight
