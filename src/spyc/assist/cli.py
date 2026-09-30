@@ -75,10 +75,8 @@ class Claude:
 
     # The prompt goes in on stdin. Claude ends with one Done or Failed, unless the answer was cancelled.
     def ask(self, prompt: str, root: Path, cancellation: Cancellation, timeout: float = ASK_TIMEOUT) -> Iterator[Event]:
-        # Inside Claude Code the variable makes a nested claude behave as a subagent.
-        environment = {name: value for name, value in os.environ.items() if name != "CLAUDECODE"}
         try:
-            process = subprocess.Popen(self.command(), cwd=root, env=environment, stdin=subprocess.PIPE,
+            process = subprocess.Popen(self.command(), cwd=root, stdin=subprocess.PIPE,
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except OSError as error:
             yield Failed(f"Could not run claude: {error}")

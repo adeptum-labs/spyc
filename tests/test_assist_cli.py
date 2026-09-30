@@ -187,12 +187,3 @@ def test_closing_the_answer_early_kills_claude(tmp_path, monkeypatch):
     started = time.perf_counter()
     answer.close()
     assert time.perf_counter() - started < 10
-
-
-@needs_sh
-def test_claude_is_not_told_it_runs_inside_claude_code(tmp_path, monkeypatch):
-    monkeypatch.setenv("CLAUDECODE", "1")
-    install_claude(tmp_path / "bin", monkeypatch)
-    (tmp_path / "bin" / "claude").write_text(f'#!/bin/sh\ncat > /dev/null\necho "[$CLAUDECODE]" > "{tmp_path}/env.txt"\n')
-    ask(Claude(str(tmp_path / "bin" / "claude"), "sonnet"))
-    assert (tmp_path / "env.txt").read_text().strip() == "[]"

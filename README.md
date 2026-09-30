@@ -15,6 +15,8 @@ files as a tree, colors the code, shows the history from git, and is meant to be
 - `git` on the path (lists the files of a project and gives the history, changes and blame)
 - `rg` (ripgrep) is optional: it makes the search of the whole project fast and is needed for pattern search; without
   it the files are read in Python and the search is literal
+- `claude` (Claude Code) is optional: when it is on the path and logged in, `a` describes a directory, package, file or
+  class
 
 ## Install
 
@@ -60,6 +62,7 @@ the build systems and the key files, such as the README, the build files, the CI
 | `b` | Show who last changed each line; `Enter` on a line opens that commit |
 | `c` | Show or hide what the tests ran, from the coverage reports |
 | `G` | Dependency graph: what the package, file or class in the middle depends on and what depends on it; `Enter` moves along an edge, `[` and `]` go a level up or down, `c` finds cycles, `o` opens the code |
+| `a` | Ask Claude to describe the directory, package, file or class; only when `claude` is installed and logged in |
 | `e` | Edit in `$VISUAL` or `$EDITOR` at the cursor line |
 | `p` | Copy `path:line` to the clipboard |
 | `i` | Project overview |
@@ -121,6 +124,22 @@ Limits:
 - C and C++: only includes are drawn, so a `.cpp` is not linked to the `.h` it implements; `-I` paths and
   `compile_commands.json` are not read, and an include named by a macro is invisible.
 - Files over 1 MB are skipped, and a file counts at most 5,000 imports and 100 classes.
+
+## Asking Claude
+
+`a` has Claude describe what is selected: in the tree the directory or file under the cursor, in the code a menu of the
+class around the cursor, the file, and its package or directory, and in the dependency graph the node in the middle.
+The answer is written into a screen of its own as Claude reads the code; `Escape` stops it and `r` asks again.
+
+The key exists only when spyc found `claude` on the path and `claude auth status` said it is logged in, which is checked
+once at start without sending a request. Each question starts `claude -p` in the root of the project with the tools
+`Read`, `Grep` and `Glob` only, so it cannot run commands, change files or use the web, and with the settings files of
+the user and the project left out. The question names what to describe and lists what spyc already knows of it:
+the files, the definitions, and what it depends on and what depends on it in the dependency graph. It is answered by
+`sonnet` at low effort; `SPYC_CLAUDE_MODEL` names another model. A question uses the quota of the Claude account.
+
+Answers are kept per project in `$XDG_CACHE_HOME/spyc`, by default `~/.cache/spyc`, and shown again at once. When the
+files have changed since, the answer is shown with a note and `r` asks again. A question is stopped after five minutes.
 
 ## Coverage
 
