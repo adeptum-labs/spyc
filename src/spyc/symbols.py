@@ -27,6 +27,7 @@ from spyc.syntax.grammars import load_tags
 from spyc.syntax.tree_sitter_highlighter import compile_query
 
 DEFINITION_PREFIX = "definition."
+CLASS_KINDS = frozenset({"class", "interface", "enum", "type"})
 MAX_INDENT = 3
 MAX_HEADING_LEVEL = 6
 FENCE_CHARACTERS = ("`", "~")
@@ -61,7 +62,7 @@ def definitions_in(data: bytes, tree, ts_language, query_source: str) -> list[Sy
     kinds: dict[tuple[str, int, int], str] = {}
     ascii_rows: dict[int, bool] = {}
     for _, captures in QueryCursor(compile_query(ts_language, query_source)).matches(tree.root_node):
-        kind = next((name[len(DEFINITION_PREFIX):] for name in captures if name.startswith(DEFINITION_PREFIX)), None)
+        kind = _kind_of(captures)
         if kind is None or "name" not in captures:
             continue
         node = captures["name"][0]
@@ -75,6 +76,34 @@ def definitions_in(data: bytes, tree, ts_language, query_source: str) -> list[Sy
             kinds[key] = kind
     return sorted((Symbol(name, kind, line, column) for (name, line, column), kind in kinds.items()),
                   key=lambda symbol: (symbol.line, symbol.column))
+
+
+def _kind_of(captures) -> str | None:
+    return next((name[len(DEFINITION_PREFIX):] for name in captures if name.startswith(DEFINITION_PREFIX)), None)
+
+
+# The innermost class around a 1-based line, for asking about "this class".
+def enclosing_definition(text: str, language: Language | None, line: int) -> Symbol | None:
+    loaded = None if language is None or language.id == "markdown" else load_tags(language)
+    if loaded is None:
+        return None
+    ts_language, query_source = loaded
+    data = text.encode("utf-8")
+    tree = Parser(ts_language).parse(data)
+    around = []
+    for _, captures in QueryCursor(compile_query(ts_language, query_source)).matches(tree.root_node):
+        kind = _kind_of(captures)
+        if kind not in CLASS_KINDS or "name" not in captures:
+            continue
+        whole = next(nodes[0] for name, nodes in captures.items() if name.startswith(DEFINITION_PREFIX))
+        if whole.start_point[0] < line <= whole.end_point[0] + 1:
+            around.append((whole.end_point[0] - whole.start_point[0], -whole.start_point[0], kind, captures["name"][0]))
+    if not around:
+        return None
+    _, _, kind, name = min(around, key=lambda candidate: candidate[:2])
+    row, byte_column = name.start_point
+    column = len(data.split(b"\n")[row][:byte_column].decode("utf-8", errors="replace"))
+    return Symbol(name.text.decode("utf-8", errors="replace"), kind, row + 1, column)
 
 
 # Markdown has no grammar here; its headings, outside fenced code, are its outline.

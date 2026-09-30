@@ -23,7 +23,7 @@ import time
 import pytest
 
 from spyc.core.languages import LANGUAGES, LANGUAGES_BY_ID
-from spyc.symbols import Symbol, symbols_of
+from spyc.symbols import Symbol, enclosing_definition, symbols_of
 
 SAMPLES = {
     "python": ("class A:\n    def m(self): pass\n\ndef f(): pass\n", {("A", 1), ("m", 2), ("f", 4)}),
@@ -122,3 +122,40 @@ def test_a_very_long_line_with_many_definitions_is_read_quickly():
     started = time.perf_counter()
     assert len(symbols_of(text, LANGUAGES_BY_ID["javascript"])) == 60_000
     assert time.perf_counter() - started < 3
+
+
+def enclosing(language_id, text, line):
+    symbol = enclosing_definition(text, LANGUAGES_BY_ID[language_id], line)
+    return None if symbol is None else (symbol.name, symbol.line)
+
+
+def test_the_innermost_class_around_a_line_is_the_enclosing_definition():
+    text = "class Outer:\n    class Inner:\n        def m(self):\n            pass\n\n    def n(self): pass\n"
+    assert enclosing("python", text, 4) == ("Inner", 2)
+    assert enclosing("python", text, 6) == ("Outer", 1)
+
+
+def test_a_line_of_the_class_header_is_inside_the_class():
+    assert enclosing("java", "class A {\n  class B {}\n}\n", 1) == ("A", 1)
+
+
+def test_a_java_inner_class_is_found_before_its_outer_class():
+    assert enclosing("java", "class A {\n  class B {\n    void m() {}\n  }\n}\n", 3) == ("B", 2)
+
+
+def test_a_line_outside_every_class_has_no_enclosing_definition():
+    assert enclosing("python", "def f():\n    pass\n\nclass A:\n    pass\n", 2) is None
+    assert enclosing("python", "class A:\n    pass\n\nx = 1\n", 4) is None
+
+
+def test_functions_and_headings_are_not_enclosing_definitions():
+    assert enclosing("python", "def f():\n    return 1\n", 2) is None
+    assert enclosing("markdown", "# Title\n\ntext\n", 3) is None
+
+
+def test_a_language_without_tags_has_no_enclosing_definition():
+    assert enclosing_definition("x", None, 1) is None
+
+
+def test_the_enclosing_definition_names_its_column_in_characters():
+    assert enclosing_definition("class Å:\n    pass\n", LANGUAGES_BY_ID["python"], 2) == Symbol("Å", "class", 1, 6)
