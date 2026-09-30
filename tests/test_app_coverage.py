@@ -158,7 +158,8 @@ async def test_a_reader_that_breaks_is_told_to_the_user_instead_of_being_swallow
     monkeypatch.setattr("spyc.app.load_reports", broken)
     notes = notes_of(monkeypatch)
     async with make_app(project, tmp_path).run_test(size=SIZE) as pilot:
-        await ready(pilot)
+        # Not `ready`: waiting for the workers raises the error of the one that breaks, if it has started by then.
+        await until(pilot, lambda: notes)
         assert notes == ["Could not read the coverage reports: boom"]
 
 
