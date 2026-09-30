@@ -24,11 +24,11 @@ import os
 import re
 import shutil
 import subprocess
-import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from spyc.core.cancellation import Cancellation
 from spyc.core.file_index import SKIPPED_DIRECTORIES
 from spyc.core.fileio import read_limited
 
@@ -52,32 +52,6 @@ class SearchResult:
     hits: list[Hit] = field(default_factory=list)
     truncated: bool = False
     error: str | None = None
-
-
-# Lets a newer search stop an older one, also while ripgrep is busy and silent.
-class Cancellation:
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._cancelled = False
-        self._kill: Callable[[], None] | None = None
-
-    @property
-    def cancelled(self) -> bool:
-        return self._cancelled
-
-    def cancel(self) -> None:
-        with self._lock:
-            self._cancelled = True
-            kill = self._kill
-        if kill is not None:
-            kill()
-
-    def on_cancel(self, kill: Callable[[], None]) -> None:
-        with self._lock:
-            self._kill = kill
-            cancelled = self._cancelled
-        if cancelled:
-            kill()
 
 
 # The query is literal and case is ignored unless it holds a capital letter,

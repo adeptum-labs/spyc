@@ -24,10 +24,11 @@ from pathlib import Path
 
 from rich.text import Text
 
+from spyc.core.cancellation import Cancellation
 from spyc.core.document import Document, load_document
 from spyc.core.picking import Item
 from spyc.core.printable import printable
-from spyc.search import MAX_HITS, Cancellation, Hit, SearchResult, search_text
+from spyc.search import MAX_HITS, Hit, SearchResult, search_text
 
 
 # Searching many files takes a moment, so the picker asks this source from a
