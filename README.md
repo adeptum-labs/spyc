@@ -1,5 +1,9 @@
 # spyc
 
+[![Tests](https://github.com/adeptum-labs/spyc/actions/workflows/tests.yml/badge.svg)](https://github.com/adeptum-labs/spyc/actions/workflows/tests.yml)
+[![Release build](https://github.com/adeptum-labs/spyc/actions/workflows/release.yml/badge.svg)](https://github.com/adeptum-labs/spyc/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/adeptum-labs/spyc?include_prereleases)](https://github.com/adeptum-labs/spyc/releases)
+
 A terminal viewer for browsing code bases. It finds the project you point it at, shows an overview of it, lists the
 files as a tree, colors the code, shows the history from git, and is meant to be the tool you open a code base with.
 
