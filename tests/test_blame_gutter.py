@@ -19,9 +19,9 @@
 
 
 from spyc.git.blame import NOT_COMMITTED, BlameLine
-from spyc.gutters import BlameGutter
 from spyc.widgets.code_theme import code_theme
 from spyc.widgets.code_view import CodeView
+from spyc.widgets.gutters import BlameGutter
 from views import ViewApp, open_file
 
 A, B = "a" * 40, "b" * 40

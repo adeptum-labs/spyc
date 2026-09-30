@@ -20,8 +20,8 @@
 
 from textual.app import App
 
-from spyc.diff_rows import DiffRow, rows_of
 from spyc.git.diff import Diff, DiffLine, FileDiff
+from spyc.git.diff_rows import DiffRow, rows_of
 from spyc.widgets.diff_view import DiffView
 
 FIRST = FileDiff("a.txt", "a.txt", "modified", [

@@ -22,8 +22,8 @@ from rich.style import Style
 
 from spyc.coverage.model import CoverageLine
 from spyc.document import load_document
-from spyc.gutters import CoverageGutter
 from spyc.widgets.code_theme import code_theme
+from spyc.widgets.gutters import CoverageGutter
 from views import ViewApp, open_file
 
 THEME = code_theme(True)

@@ -29,7 +29,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, OptionList
 from textual.widgets.option_list import Option
 
-from spyc.diff_rows import DiffRow, rows_of
+from spyc.git.diff_rows import DiffRow, rows_of
 from spyc.git.log import Commit
 from spyc.git.repository import CommitDetail, Git
 from spyc.location import Location

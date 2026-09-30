@@ -37,12 +37,12 @@ from spyc.coverage.model import Lines
 from spyc.document import Document
 from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
-from spyc.gutters import BlameGutter, ChangeGutter, CoverageGutter, Gutter, LineNumberGutter
-from spyc.line_text import build_line, segments_of
 from spyc.matches import find_matches
 from spyc.syntax.factory import make_highlighter
 from spyc.syntax.spans import Highlighter, PlainHighlighter
 from spyc.widgets.code_theme import code_theme
+from spyc.widgets.gutters import BlameGutter, ChangeGutter, CoverageGutter, Gutter, LineNumberGutter
+from spyc.widgets.line_text import build_line, segments_of
 
 log = logging.getLogger(__name__)
 CACHED_ROWS = 512

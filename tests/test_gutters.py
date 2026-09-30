@@ -18,8 +18,8 @@
 # Contact: info@adeptum.se
 
 
-from spyc.gutters import LineNumberGutter
 from spyc.widgets.code_theme import code_theme
+from spyc.widgets.gutters import LineNumberGutter
 
 
 def test_line_number_gutter_grows_with_the_line_count():

@@ -20,9 +20,9 @@
 
 from rich.style import Style
 
-from spyc.line_text import build_line
 from spyc.syntax.spans import Span
 from spyc.syntax.theme import CodeTheme, SyntaxTheme
+from spyc.widgets.line_text import build_line
 
 THEME = CodeTheme(
     syntax=SyntaxTheme({"number": Style(color="red")}), base=Style(color="white"),

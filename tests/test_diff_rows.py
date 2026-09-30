@@ -18,8 +18,8 @@
 # Contact: info@adeptum.se
 
 
-from spyc.diff_rows import DiffRow, location_of, rows_of
 from spyc.git.diff import Diff, DiffLine, FileDiff
+from spyc.git.diff_rows import DiffRow, location_of, rows_of
 
 MODIFIED = FileDiff("a.txt", "a.txt", "modified", [
     DiffLine("hunk", "@@ -1,3 +1,3 @@", None, 1),

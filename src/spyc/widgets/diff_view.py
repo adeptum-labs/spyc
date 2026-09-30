@@ -27,9 +27,9 @@ from textual.scroll_view import ScrollView
 from textual.strip import Strip
 
 from spyc.cells import expand_tabs, widest_cells
-from spyc.diff_rows import DiffRow, location_of
-from spyc.line_text import segments_of
+from spyc.git.diff_rows import DiffRow, location_of
 from spyc.printable import printable
+from spyc.widgets.line_text import segments_of
 
 MIN_DIGITS = 3
 PREFIXES = {"add": "+", "delete": "-", "context": " "}

@@ -26,7 +26,7 @@ from textual.scroll_view import ScrollView
 from textual.strip import Strip
 
 from spyc.deps.render import FocusLayout
-from spyc.line_text import segments_of
+from spyc.widgets.line_text import segments_of
 
 
 # Draws a FocusLayout; the screen owns what is selected. It does not take the focus,

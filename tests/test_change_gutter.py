@@ -21,8 +21,8 @@
 from rich.style import Style
 
 from spyc.git.changes import LineChanges
-from spyc.gutters import ChangeGutter
 from spyc.widgets.code_theme import code_theme
+from spyc.widgets.gutters import ChangeGutter
 from views import ViewApp, open_file
 
 THEME = code_theme(True)
