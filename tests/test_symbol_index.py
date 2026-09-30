@@ -139,7 +139,7 @@ def test_a_cache_that_nothing_changed_is_not_written_again(project, tmp_path):
 def test_two_saves_never_share_a_temporary_file(project, tmp_path, monkeypatch):
     sources = []
     real = os.replace
-    monkeypatch.setattr(spyc.symbol_index.os, "replace", lambda source, target: sources.append(source) or real(source, target))
+    monkeypatch.setattr(spyc.core.cache_files.os, "replace", lambda source, target: sources.append(source) or real(source, target))
     SymbolIndex(project, tmp_path / "cache.json").update(PATHS)
     SymbolIndex(project, tmp_path / "cache.json").update(("a.py",))
     assert len(sources) == 2 and sources[0] != sources[1]

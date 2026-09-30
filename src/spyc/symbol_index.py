@@ -19,18 +19,16 @@
 
 
 import functools
-import hashlib
 import importlib.metadata
 import json
 import logging
-import os
-import tempfile
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from spyc.analysis import Analysis, analyse
+from spyc.core.cache_files import cache_path, write_atomically
 from spyc.core.fileio import read_limited
 from spyc.core.languages import CARGO_MANIFEST, GO_MODULE, Language, detect_language
 from spyc.deps.facts import FileFacts, facts_from_json, facts_to_json
@@ -51,8 +49,7 @@ class Located:
 
 
 def default_cache_path(root: Path) -> Path:
-    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    return Path(base) / "spyc" / f"symbols-{hashlib.sha1(str(root).encode()).hexdigest()[:12]}.json"
+    return cache_path(root, "symbols")
 
 
 # The definitions found depend on the tags queries and on the grammars that
@@ -186,19 +183,8 @@ class SymbolIndex:
                      for path, symbols in self._files.items() if path in self._stamps}
             self._changed = False
         try:
-            self._cache_path.parent.mkdir(parents=True, exist_ok=True)
-            self._write_atomically(json.dumps({"version": CACHE_VERSION, "signature": _signature(), "files": files}))
+            write_atomically(self._cache_path, json.dumps({"version": CACHE_VERSION, "signature": _signature(), "files": files}))
         except OSError as error:
             self._changed = True
             log.warning("Could not save the symbol index to %s: %s", self._cache_path, error)
 
-    # Another spyc on the same project writes here too, so each write has a file of its own.
-    def _write_atomically(self, content: str) -> None:
-        handle, temporary = tempfile.mkstemp(dir=self._cache_path.parent, prefix=f"{self._cache_path.name}.", suffix=".tmp")
-        try:
-            with os.fdopen(handle, "w", encoding="utf-8") as stream:
-                stream.write(content)
-            os.replace(temporary, self._cache_path)
-        except OSError:
-            Path(temporary).unlink(missing_ok=True)
-            raise
