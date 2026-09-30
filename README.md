@@ -4,8 +4,9 @@
 [![Release build](https://github.com/adeptum-labs/spyc/actions/workflows/release.yml/badge.svg)](https://github.com/adeptum-labs/spyc/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/adeptum-labs/spyc?include_prereleases)](https://github.com/adeptum-labs/spyc/releases)
 
-spyc is short for "spy code": a terminal viewer for browsing code bases. It finds the project you point it at, shows an overview of it, lists the
-files as a tree, colors the code, shows the history from git, and is meant to be the tool you open a code base with.
+spyc is short for "spy code": a terminal viewer for browsing code bases. It finds the project you point it at, shows an
+overview of it, lists the files as a tree, colors the code, shows the history from git, and is meant to be the tool you
+open a code base with.
 
 ![A file with coverage marks in the margin, changed lines marked, and shares in the tree](docs/code.svg)
 
