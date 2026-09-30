@@ -32,6 +32,11 @@ from textual.widget import Widget
 from textual.widgets import Footer, Header, OptionList
 from textual.worker import Worker, WorkerState, get_current_worker
 
+from spyc.about import About
+from spyc.assist.cache import AnswerCache
+from spyc.assist.cli import Claude, find_claude
+from spyc.assist.targets import Target
+from spyc.core.cache_files import cache_path
 from spyc.core.document import load_document
 from spyc.core.file_index import MAX_INDEXED_FILES, FileIndex, build_index
 from spyc.core.file_picker import FilePickerSource
@@ -45,7 +50,7 @@ from spyc.core.tree_model import TreeModel
 from spyc.coverage.index import Coverage
 from spyc.coverage.reports import find_reports, load_reports
 from spyc.coverage.text import coverage_status
-from spyc.deps.graph import DependencyGraph, Stopped
+from spyc.deps.graph import DependencyGraph, Node, Stopped
 from spyc.editor import editor_command
 from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
@@ -54,11 +59,13 @@ from spyc.git.status import rollup
 from spyc.git.summary import GitSummary
 from spyc.history import JumpHistory, Place
 from spyc.screens.changes import ChangesScreen
+from spyc.screens.explain import ExplainScreen
 from spyc.screens.graph import GraphScreen
 from spyc.screens.help import HelpScreen
 from spyc.screens.log import LogScreen
 from spyc.screens.picker import Picker
 from spyc.screens.prompt import Prompt
+from spyc.screens.scope_menu import ScopeMenu
 from spyc.search_picker import SearchSource
 from spyc.state import StateStore
 from spyc.symbol_index import Located, SymbolIndex, default_cache_path
@@ -79,7 +86,7 @@ MARKDOWN_LIMIT = 50_000
 MAIN_VIEW_ACTIONS = frozenset({
     "find_file", "search_project", "show_outline", "find_symbol", "go_to_definition", "search_in_file", "goto_line", "history_back", "history_forward", "show_log", "show_file_log",
     "show_changes", "toggle_blame", "toggle_coverage", "show_graph", "edit", "copy_location", "overview", "toggle_sidebar", "toggle_ignored",
-    "toggle_markdown", "refresh_project"})
+    "toggle_markdown", "refresh_project", "about"})
 
 
 def _nearness(candidate: Located, current: str) -> tuple:
@@ -113,6 +120,7 @@ class SpycApp(App):
         Binding("b", "toggle_blame", "Blame", show=False),
         Binding("c", "toggle_coverage", "Coverage", show=False),
         Binding("G", "show_graph", "Graph", show=False),
+        Binding("a", "about", "About", show=False),
         Binding("e", "edit", "Edit", show=False),
         Binding("p", "copy_location", "Copy path", show=False),
         Binding("i", "overview", "Info", show=False),
@@ -146,11 +154,16 @@ class SpycApp(App):
         self._matcher: PathMatcher | None = None
         self._paths: tuple[str, ...] | None = None
         self._symbols = SymbolIndex(project_root, default_cache_path(project_root))
+        self._about = About(self._symbols, lambda: self._paths, lambda: self._graph)
+        self._answers = AnswerCache(cache_path(project_root, "claude"))
+        self._claude: Claude | None = None
         self._show_ignored = False
         self._index_generation = 0
         self._last_query = ""
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "about" and self._claude is None:
+            return False
         return not (action in MAIN_VIEW_ACTIONS and len(self.screen_stack) > 1)
 
     def compose(self) -> ComposeResult:
@@ -200,6 +213,7 @@ class SpycApp(App):
         self.set_interval(GIT_INTERVAL, self._poll_git)
         self._reload_index()
         self._refresh_git()
+        self._look_for_claude()
         start = self._start_location
         if start is not None and (self.project_root / start.path).is_file():
             self.open_file(start.path, start.line)
@@ -257,8 +271,47 @@ class SpycApp(App):
     def action_show_graph(self) -> None:
         code = self._code
         path = code.display_path if code.document is not None else None
-        screen = GraphScreen(self.project_root, self._graph, self._symbol_progress, path, self._graph_failure)
+        screen = GraphScreen(self.project_root, self._graph, self._symbol_progress, path, self._graph_failure,
+                             self._explain_node if self._claude is not None else None)
         self.push_screen(screen, self._location_chosen)
+
+    # Claude is used only when it is installed and logged in, which is asked once, without spending a request.
+    @work(thread=True, exclusive=True, group="claude", exit_on_error=False)
+    def _look_for_claude(self) -> None:
+        self.call_from_thread(self._claude_found, find_claude())
+
+    def _claude_found(self, claude: Claude | None) -> None:
+        self._claude = claude
+        self.refresh_bindings()
+
+    def action_about(self) -> None:
+        if self._paths is None:
+            self.notify("Still reading the project files")
+            return
+        code = self._viewing()
+        if code is not None and not self._tree.has_focus:
+            scopes = self._about.scopes(code.display_path, code.document, code.cursor_row)
+            self.push_screen(ScopeMenu(scopes), self._explain_chosen)
+            return
+        node = self._tree.cursor_node
+        if node is None or node.data is None:
+            self.notify("Select a file or directory first")
+        else:
+            self._explain(self._about.directory(node.data.path) if node.data.is_dir else self._about.file(node.data.path))
+
+    def _explain_chosen(self, target: Target | None) -> None:
+        if target is not None:
+            self._explain(target)
+
+    def _explain_node(self, node: Node) -> None:
+        target = self._about.node(node)
+        if target is None:
+            self.notify("Nothing to ask about here")
+        else:
+            self._explain(target)
+
+    def _explain(self, target: Target) -> None:
+        self.push_screen(ExplainScreen(self._claude, self._answers, self.project_root, target, self._about.facts_of))
 
     # The reports are those named on the command line, or else the ones the
     # project has; reading them can take a moment, so it is done off the UI thread.

@@ -35,6 +35,12 @@ def isolated_state(monkeypatch, tmp_path_factory):
     monkeypatch.delenv("RIPGREP_CONFIG_PATH", raising=False)
 
 
+# The claude of the developer must not be found by the app in a test; test_app_about puts a fake one in its place.
+@pytest.fixture(autouse=True)
+def no_claude(monkeypatch):
+    monkeypatch.setattr("spyc.app.find_claude", lambda: None)
+
+
 @pytest.fixture
 def git_repo(tmp_path):
     return make_repo(tmp_path / "project", PROJECT_FILES)

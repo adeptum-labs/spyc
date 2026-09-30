@@ -60,6 +60,7 @@ class GraphScreen(Screen[Location | None]):
         Binding("slash", "pick", "Find"),
         Binding("o", "open", "Open"),
         Binding("c", "cycle", "Cycles"),
+        Binding("a", "about", "About"),
         Binding("left", "side('in')", show=False),
         Binding("right", "side('out')", show=False),
         Binding("tab,shift+tab", "toggle_side", show=False),
@@ -68,10 +69,11 @@ class GraphScreen(Screen[Location | None]):
     ]
 
     def __init__(self, root: Path, graph: DependencyGraph | None, progress: Callable[[], str],
-                 path: str | None = None, failure: str | None = None) -> None:
+                 path: str | None = None, failure: str | None = None,
+                 explain: Callable[[Node], None] | None = None) -> None:
         super().__init__()
         self._root, self._graph, self._progress, self._path = root, graph, progress, path
-        self._failure = failure
+        self._failure, self._explain = failure, explain
         self.centre: Node | None = None
         self._side, self._index = "out", 0
         self._history: list[Node] = []
@@ -240,6 +242,13 @@ class GraphScreen(Screen[Location | None]):
         message.stop()
         self._side, self._index = message.side, message.index
         self.action_centre()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        return self._explain is not None if action == "about" else True
+
+    def action_about(self) -> None:
+        if self._explain is not None and self.centre is not None:
+            self._explain(self.centre)
 
     def action_close(self) -> None:
         self.dismiss(None)

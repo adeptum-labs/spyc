@@ -57,6 +57,10 @@ class FakeClaude:
         return (self.directory / "runs.log").read_text().splitlines()
 
     @property
+    def pid(self) -> int:
+        return int((self.directory / "pid.txt").read_text())
+
+    @property
     def prompt(self) -> str:
         return (self.directory / "prompt.txt").read_text()
 
@@ -73,6 +77,7 @@ def install_claude(directory: Path, monkeypatch, *, auth: str = '{"loggedIn": tr
     script.write_text(f"""#!/bin/sh
 if [ "$1" = auth ]; then cat '{directory}/auth.json'; exit {auth_status}; fi
 echo "$*" >> '{directory}/runs.log'
+echo $$ > '{directory}/pid.txt'
 cat > '{directory}/prompt.txt'
 cat '{directory}/stream.jsonl'
 cat '{directory}/stderr.txt' >&2
