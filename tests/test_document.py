@@ -20,8 +20,8 @@
 
 import pytest
 
-import spyc.document
-from spyc.document import load_document
+import spyc.core.document
+from spyc.core.document import load_document
 
 
 def write(tmp_path, name, data: bytes):
@@ -57,7 +57,7 @@ def test_binary_file_has_a_notice_and_no_lines(tmp_path):
 
 
 def test_huge_file_is_not_read(tmp_path, monkeypatch):
-    monkeypatch.setattr(spyc.document, "FILE_LIMIT", 4)
+    monkeypatch.setattr(spyc.core.document, "FILE_LIMIT", 4)
     document = load_document(write(tmp_path, "a.log", b"0123456789"))
     assert document.lines == ()
     assert "too large" in document.notice
@@ -69,7 +69,7 @@ def test_minified_line_turns_off_highlighting(tmp_path):
 
 
 def test_large_file_turns_off_highlighting(tmp_path, monkeypatch):
-    monkeypatch.setattr(spyc.document, "HIGHLIGHT_LIMIT", 4)
+    monkeypatch.setattr(spyc.core.document, "HIGHLIGHT_LIMIT", 4)
     assert load_document(write(tmp_path, "a.py", b"x = 1\n")).plain
 
 

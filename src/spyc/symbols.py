@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 from tree_sitter import Parser, QueryCursor
 
-from spyc.languages import Language
+from spyc.core.languages import Language
 from spyc.syntax.grammars import load_tags
 from spyc.syntax.tree_sitter_highlighter import compile_query
 

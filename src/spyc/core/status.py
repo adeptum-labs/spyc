@@ -18,7 +18,7 @@
 # Contact: info@adeptum.se
 
 
-from spyc.printable import printable
+from spyc.core.printable import printable
 
 
 def status_line(path: str | None, language: str | None, row: int, column: int, total: int, extra: str = "") -> str:

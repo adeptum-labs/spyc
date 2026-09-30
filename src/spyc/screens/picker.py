@@ -31,8 +31,8 @@ from textual.screen import ModalScreen
 from textual.widgets import Input, OptionList, Static
 from textual.widgets.option_list import Option
 
-from spyc.document import Document
-from spyc.picking import Choice, Item, PickerSource
+from spyc.core.document import Document
+from spyc.core.picking import Choice, Item, PickerSource
 from spyc.widgets.code_view import CodeView
 
 log = logging.getLogger(__name__)

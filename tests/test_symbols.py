@@ -22,7 +22,7 @@ import time
 
 import pytest
 
-from spyc.languages import LANGUAGES, LANGUAGES_BY_ID
+from spyc.core.languages import LANGUAGES, LANGUAGES_BY_ID
 from spyc.symbols import Symbol, symbols_of
 
 SAMPLES = {

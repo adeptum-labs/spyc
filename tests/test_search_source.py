@@ -21,7 +21,7 @@
 import pytest
 
 from repos import write_files
-from spyc.file_index import build_index
+from spyc.core.file_index import build_index
 from spyc.search import SearchResult
 from spyc.search_picker import SearchSource
 

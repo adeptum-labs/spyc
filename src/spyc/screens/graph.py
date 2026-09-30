@@ -27,14 +27,14 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
+from spyc.core.file_picker import FilePickerSource
+from spyc.core.fuzzy import PathMatcher
+from spyc.core.location import Location
+from spyc.core.picking import Choice
+from spyc.core.printable import printable
 from spyc.deps.graph import UNIT, DependencyGraph, Node
 from spyc.deps.picker import NodeSource
 from spyc.deps.render import FocusLayout, entries_of, focus_layout, header_text, stacked_layout
-from spyc.file_picker import FilePickerSource
-from spyc.fuzzy import PathMatcher
-from spyc.location import Location
-from spyc.picking import Choice
-from spyc.printable import printable
 from spyc.screens.picker import Picker
 from spyc.widgets.graph_view import GraphView
 

@@ -18,7 +18,7 @@
 # Contact: info@adeptum.se
 
 
-from spyc.document import load_document
+from spyc.core.document import load_document
 from views import ViewApp, open_file
 
 

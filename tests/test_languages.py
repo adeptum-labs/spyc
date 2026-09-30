@@ -23,7 +23,7 @@ import time
 import pytest
 from pygments.lexers import get_lexer_by_name
 
-from spyc.languages import LANGUAGES, detect_language
+from spyc.core.languages import LANGUAGES, detect_language
 
 
 @pytest.mark.parametrize("path, expected", [

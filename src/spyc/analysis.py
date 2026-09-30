@@ -23,9 +23,9 @@ from dataclasses import dataclass, replace
 
 from tree_sitter import Parser
 
+from spyc.core.languages import CARGO_MANIFEST, GO_MODULE, Language
 from spyc.deps.extract import facts_of
 from spyc.deps.facts import FileFacts, Import
-from spyc.languages import CARGO_MANIFEST, GO_MODULE, Language
 from spyc.symbols import Symbol, definitions_in, headings_of
 from spyc.syntax.grammars import load_imports, load_tags
 from spyc.syntax.tree_sitter_highlighter import compile_query

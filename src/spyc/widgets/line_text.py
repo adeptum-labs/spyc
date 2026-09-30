@@ -25,7 +25,7 @@ from rich.segment import Segment
 from rich.style import Style
 from rich.text import Text
 
-from spyc.cells import expand_tabs
+from spyc.core.cells import expand_tabs
 from spyc.syntax.spans import Span
 from spyc.syntax.theme import CodeTheme
 

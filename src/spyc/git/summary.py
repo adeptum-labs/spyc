@@ -22,9 +22,9 @@ from dataclasses import dataclass
 
 from rich.text import Text
 
+from spyc.core.printable import printable
+from spyc.core.timeago import age
 from spyc.git.log import Commit
-from spyc.printable import printable
-from spyc.timeago import age
 
 
 @dataclass(frozen=True)

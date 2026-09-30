@@ -27,7 +27,7 @@ import tempfile
 from pathlib import Path
 
 from spyc.app import SpycApp
-from spyc.location import Location
+from spyc.core.location import Location
 from spyc.state import StateStore
 
 DOCS = Path(__file__).resolve().parent.parent / "docs"

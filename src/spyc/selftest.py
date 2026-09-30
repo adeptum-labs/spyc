@@ -18,8 +18,8 @@
 # Contact: info@adeptum.se
 
 
+from spyc.core.languages import LANGUAGES, Language
 from spyc.coverage.safe_xml import parse_xml
-from spyc.languages import LANGUAGES, Language
 from spyc.syntax.factory import make_highlighter
 from spyc.syntax.grammars import load_grammar, load_imports, load_tags
 from spyc.syntax.tree_sitter_highlighter import compile_query

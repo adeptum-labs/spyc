@@ -23,9 +23,9 @@ from pathlib import Path
 from textual.app import App
 from textual.widgets import Static
 
+from spyc.core.location import Location
 from spyc.deps.facts import ClassDef, FileFacts, Import
 from spyc.deps.graph import CLASS, FILE, UNIT, DependencyGraph, Node
-from spyc.location import Location
 from spyc.screens.graph import GraphScreen
 from spyc.screens.picker import Picker
 from spyc.widgets.graph_view import GraphView

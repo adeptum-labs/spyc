@@ -23,14 +23,14 @@ import os
 from textual.app import App
 
 from repos import write_files
-from spyc.document import load_document
-from spyc.file_index import build_index
-from spyc.file_picker import FilePickerSource
-from spyc.fuzzy import PathMatcher
-from spyc.overview import build_overview
-from spyc.printable import printable
-from spyc.status import status_line
-from spyc.tree_model import TreeModel
+from spyc.core.document import load_document
+from spyc.core.file_index import build_index
+from spyc.core.file_picker import FilePickerSource
+from spyc.core.fuzzy import PathMatcher
+from spyc.core.overview import build_overview
+from spyc.core.printable import printable
+from spyc.core.status import status_line
+from spyc.core.tree_model import TreeModel
 from spyc.widgets.file_tree import FileTree
 from views import ViewApp, open_file
 

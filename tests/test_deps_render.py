@@ -18,10 +18,10 @@
 # Contact: info@adeptum.se
 
 
+from spyc.core.printable import printable
 from spyc.deps.facts import ClassDef, FileFacts, Import
 from spyc.deps.graph import CLASS, UNIT, DependencyGraph, Node
 from spyc.deps.render import Entry, entries_of, focus_layout, header_text, stacked_layout
-from spyc.printable import printable
 
 LEFT = [Entry("web.api", 3), Entry("web.admin", 1)]
 RIGHT = [Entry("core.model", 2), Entry("core.util", 5), Entry("core.billing", 1, True)]

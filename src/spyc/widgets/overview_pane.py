@@ -26,12 +26,12 @@ from textual.containers import VerticalScroll
 from textual.widgets import Label, OptionList, Static
 from textual.widgets.option_list import Option
 
+from spyc.core.overview import Overview, summary_text
+from spyc.core.printable import printable
 from spyc.coverage.index import Coverage
 from spyc.coverage.text import summary_text as coverage_summary
 from spyc.git.summary import GitSummary
 from spyc.git.summary import summary_text as git_summary_text
-from spyc.overview import Overview, summary_text
-from spyc.printable import printable
 from spyc.widgets.file_tree import FileTree
 
 

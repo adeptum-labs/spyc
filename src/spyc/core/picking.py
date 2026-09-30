@@ -18,29 +18,32 @@
 # Contact: info@adeptum.se
 
 
-from textual.app import App
+from dataclasses import dataclass
+from typing import Protocol
 
-from spyc.core.document import load_document
-from spyc.widgets.code_view import CodeView
+from rich.text import Text
 
-
-class ViewApp(App):
-    def __init__(self) -> None:
-        super().__init__()
-        self.moves: list[tuple[int, int]] = []
-
-    def compose(self):
-        yield CodeView()
-
-    def on_code_view_cursor_moved(self, message) -> None:
-        self.moves.append((message.row, message.column))
+from spyc.core.document import Document
 
 
-async def open_file(pilot, tmp_path, name, content: bytes):
-    path = tmp_path / name
-    path.write_bytes(content)
-    view = pilot.app.query_one(CodeView)
-    view.focus()
-    view.show(load_document(path))
-    await pilot.pause()
-    return view
+@dataclass(frozen=True)
+class Item:
+    key: str
+    label: Text
+    line: int | None = None
+    column: int = 0
+
+
+@dataclass(frozen=True)
+class Choice:
+    key: str
+    line: int | None = None
+    column: int = 0
+
+
+class PickerSource(Protocol):
+    placeholder: str
+
+    def search(self, query: str) -> list[Item]: ...
+
+    def preview(self, item: Item) -> Document | None: ...

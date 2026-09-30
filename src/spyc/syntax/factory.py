@@ -18,7 +18,7 @@
 # Contact: info@adeptum.se
 
 
-from spyc.languages import Language
+from spyc.core.languages import Language
 from spyc.syntax.grammars import load_grammar
 from spyc.syntax.pygments_highlighter import PygmentsHighlighter
 from spyc.syntax.spans import Highlighter, PlainHighlighter

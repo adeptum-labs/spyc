@@ -24,10 +24,10 @@ from textual.message import Message
 from textual.widgets import Tree
 from textual.widgets.tree import TreeNode
 
+from spyc.core.printable import printable
+from spyc.core.tree_model import Entry, TreeModel
 from spyc.coverage.text import percent_style, percent_text
 from spyc.git.status import rollup
-from spyc.printable import printable
-from spyc.tree_model import Entry, TreeModel
 
 STATUS_STYLES = {"M": "yellow", "A": "green", "D": "red", "R": "cyan", "?": "bright_black", "U": "bold red"}
 

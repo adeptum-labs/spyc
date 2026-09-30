@@ -32,12 +32,12 @@ from textual.message import Message
 from textual.scroll_view import ScrollView
 from textual.strip import Strip
 
-from spyc.cells import cell_of_char, char_at_cell, widest_cells
+from spyc.core.cells import cell_of_char, char_at_cell, widest_cells
+from spyc.core.document import Document
+from spyc.core.matches import find_matches
 from spyc.coverage.model import Lines
-from spyc.document import Document
 from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
-from spyc.matches import find_matches
 from spyc.syntax.factory import make_highlighter
 from spyc.syntax.spans import Highlighter, PlainHighlighter
 from spyc.widgets.code_theme import code_theme

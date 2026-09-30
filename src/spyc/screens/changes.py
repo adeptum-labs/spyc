@@ -26,10 +26,10 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Footer, Header
 
+from spyc.core.location import Location
 from spyc.git.diff import Diff
 from spyc.git.diff_rows import DiffRow, rows_of
 from spyc.git.repository import Git
-from spyc.location import Location
 from spyc.widgets.diff_view import DiffView
 
 

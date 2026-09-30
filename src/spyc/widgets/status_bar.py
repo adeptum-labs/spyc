@@ -21,7 +21,7 @@
 from rich.text import Text
 from textual.widgets import Static
 
-from spyc.status import status_line
+from spyc.core.status import status_line
 
 
 class StatusBar(Static):

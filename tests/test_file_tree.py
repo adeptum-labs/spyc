@@ -20,7 +20,7 @@
 
 from textual.app import App
 
-from spyc.tree_model import TreeModel
+from spyc.core.tree_model import TreeModel
 from spyc.widgets.file_tree import FileTree
 
 PATHS = ["README.md", "src/main/java/A.java", "src/main/java/B.java", "src/test/T.java", "docs/guide.md", "Zed.txt"]

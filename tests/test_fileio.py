@@ -20,8 +20,8 @@
 
 import os
 
-from spyc.document import load_document
-from spyc.fileio import read_limited
+from spyc.core.document import load_document
+from spyc.core.fileio import read_limited
 from spyc.search import search_text
 from spyc.symbol_index import SymbolIndex
 

@@ -26,7 +26,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-from spyc.languages import LANGUAGES
+from spyc.core.languages import LANGUAGES
 
 ROOT = Path(__file__).resolve().parent.parent
 LIB_DIR = "usr/lib/spyc"

@@ -32,38 +32,38 @@ from textual.widget import Widget
 from textual.widgets import Footer, Header, OptionList
 from textual.worker import Worker, WorkerState, get_current_worker
 
+from spyc.core.document import load_document
+from spyc.core.file_index import MAX_INDEXED_FILES, FileIndex, build_index
+from spyc.core.file_picker import FilePickerSource
+from spyc.core.fuzzy import PathMatcher
+from spyc.core.languages import detect_language
+from spyc.core.location import Location
+from spyc.core.overview import Overview, build_overview
+from spyc.core.picking import Choice
+from spyc.core.printable import printable
+from spyc.core.tree_model import TreeModel
 from spyc.coverage.index import Coverage
 from spyc.coverage.reports import find_reports, load_reports
 from spyc.coverage.text import coverage_status
 from spyc.deps.graph import DependencyGraph, Stopped
-from spyc.document import load_document
 from spyc.editor import editor_command
-from spyc.file_index import MAX_INDEXED_FILES, FileIndex, build_index
-from spyc.file_picker import FilePickerSource
-from spyc.fuzzy import PathMatcher
 from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
 from spyc.git.repository import Git
 from spyc.git.status import rollup
 from spyc.git.summary import GitSummary
 from spyc.history import JumpHistory, Place
-from spyc.languages import detect_language
-from spyc.location import Location
-from spyc.overview import Overview, build_overview
-from spyc.picking import Choice
-from spyc.printable import printable
-from spyc.search_picker import SearchSource
-from spyc.symbol_index import Located, SymbolIndex, default_cache_path
-from spyc.symbol_picker import LIST_LIMIT, SymbolSource
-from spyc.symbols import Symbol, symbols_of
 from spyc.screens.changes import ChangesScreen
 from spyc.screens.graph import GraphScreen
 from spyc.screens.help import HelpScreen
 from spyc.screens.log import LogScreen
 from spyc.screens.picker import Picker
 from spyc.screens.prompt import Prompt
+from spyc.search_picker import SearchSource
 from spyc.state import StateStore
-from spyc.tree_model import TreeModel
+from spyc.symbol_index import Located, SymbolIndex, default_cache_path
+from spyc.symbol_picker import LIST_LIMIT, SymbolSource
+from spyc.symbols import Symbol, symbols_of
 from spyc.widgets.code_view import CodeView
 from spyc.widgets.file_tree import FileTree
 from spyc.widgets.markdown_pane import MarkdownPane

@@ -21,9 +21,9 @@
 import pytest
 
 from repos import git, write_files
+from spyc.core.timeago import age
 from spyc.git.log import Commit, parse_log
 from spyc.git.repository import Git
-from spyc.timeago import age
 
 
 def commit(repo, name, content, message):

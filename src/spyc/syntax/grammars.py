@@ -26,7 +26,7 @@ from importlib import resources
 
 from tree_sitter import Language as TreeSitterLanguage
 
-from spyc.languages import Language
+from spyc.core.languages import Language
 
 log = logging.getLogger(__name__)
 

@@ -18,7 +18,7 @@
 # Contact: info@adeptum.se
 
 
-from spyc.project import KeyFile, detect_build_systems, find_root, key_files
+from spyc.core.project import KeyFile, detect_build_systems, find_root, key_files
 
 
 def test_root_is_the_git_toplevel_from_a_subdirectory(git_repo):

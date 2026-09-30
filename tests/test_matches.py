@@ -18,7 +18,7 @@
 # Contact: info@adeptum.se
 
 
-from spyc.matches import find_matches
+from spyc.core.matches import find_matches
 
 
 def test_lowercase_query_ignores_case():

@@ -23,10 +23,10 @@ from pathlib import Path
 
 from rich.text import Text
 
-from spyc.document import Document, load_document
-from spyc.fuzzy import rank_counted
-from spyc.picking import Item
-from spyc.printable import printable
+from spyc.core.document import Document, load_document
+from spyc.core.fuzzy import rank_counted
+from spyc.core.picking import Item
+from spyc.core.printable import printable
 from spyc.symbol_index import Located
 
 KIND_WIDTH = 10

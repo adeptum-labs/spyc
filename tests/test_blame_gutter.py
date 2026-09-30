@@ -75,7 +75,7 @@ async def test_enter_names_the_commit_of_the_line_and_uncommitted_lines_name_non
 
 
 async def test_the_blame_column_stays_when_another_file_is_shown(tmp_path):
-    from spyc.document import load_document
+    from spyc.core.document import load_document
     async with ViewApp().run_test(size=(100, 24)) as pilot:
         view = await open_file(pilot, tmp_path, "a.txt", b"one\n")
         view.set_blame(BLAME, NOW)

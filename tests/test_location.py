@@ -20,7 +20,7 @@
 
 import pytest
 
-from spyc.location import Location, parse_location, split_line_suffix
+from spyc.core.location import Location, parse_location, split_line_suffix
 
 
 @pytest.mark.parametrize("text, expected", [

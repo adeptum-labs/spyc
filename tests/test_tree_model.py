@@ -18,7 +18,7 @@
 # Contact: info@adeptum.se
 
 
-from spyc.tree_model import Entry, TreeModel
+from spyc.core.tree_model import Entry, TreeModel
 
 PATHS = ["README.md", "src/main/java/A.java", "src/main/java/B.java", "src/test/T.java", "docs/guide.md", "Zed.txt"]
 

@@ -24,8 +24,8 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
-from spyc.languages import Language, detect_language
-from spyc.printable import printable
+from spyc.core.languages import Language, detect_language
+from spyc.core.printable import printable
 
 FILE_LIMIT = 50 * 1024 * 1024
 HIGHLIGHT_LIMIT = 2 * 1024 * 1024

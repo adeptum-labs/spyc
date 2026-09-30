@@ -23,8 +23,8 @@ from textual.widgets import OptionList
 
 import spyc.screens.log
 from repos import git, write_files
+from spyc.core.location import Location
 from spyc.git.repository import Git
-from spyc.location import Location
 from spyc.screens.log import LogScreen
 from spyc.widgets.diff_view import DiffView
 

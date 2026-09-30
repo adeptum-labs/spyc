@@ -20,7 +20,7 @@
 
 import time
 
-from spyc.fuzzy import PathMatcher, rank, rank_counted
+from spyc.core.fuzzy import PathMatcher, rank, rank_counted
 
 PATHS = ["src/app.py", "src/application/main.py", "README.md", "docs/app-guide.md",
          "tests/test_app.py", "src/util/strings.py"]

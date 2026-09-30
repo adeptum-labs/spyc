@@ -26,7 +26,7 @@ import pytest
 
 import spyc.symbol_index
 from repos import write_files
-from spyc.languages import detect_language
+from spyc.core.languages import detect_language
 from spyc.symbol_index import Located, SymbolIndex, default_cache_path
 from spyc.symbols import Symbol
 

@@ -53,7 +53,7 @@ async def test_the_code_view_shows_the_column_only_once_it_has_changes(tmp_path)
 
 
 async def test_the_column_stays_when_another_file_is_shown(tmp_path):
-    from spyc.document import load_document
+    from spyc.core.document import load_document
     async with ViewApp().run_test(size=(80, 24)) as pilot:
         view = await open_file(pilot, tmp_path, "a.txt", b"a\n")
         view.set_changes(LineChanges(added=frozenset({1})))

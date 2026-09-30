@@ -18,7 +18,7 @@
 # Contact: info@adeptum.se
 
 
-from spyc.languages import LANGUAGES_BY_ID
+from spyc.core.languages import LANGUAGES_BY_ID
 from spyc.syntax.grammars import load_grammar
 from spyc.syntax.tree_sitter_highlighter import TreeSitterHighlighter
 

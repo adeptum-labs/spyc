@@ -24,7 +24,7 @@ import pytest
 
 import spyc.analysis
 from spyc.analysis import analyse
-from spyc.languages import GO_MODULE, LANGUAGES_BY_ID
+from spyc.core.languages import GO_MODULE, LANGUAGES_BY_ID
 
 JAVA = "package a.b;\nimport c.D;\npublic class A { void m() {} }\n"
 

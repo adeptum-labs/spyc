@@ -18,7 +18,7 @@
 # Contact: info@adeptum.se
 
 
-from spyc.status import status_line
+from spyc.core.status import status_line
 
 
 def test_position_is_one_based():

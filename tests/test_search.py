@@ -26,7 +26,7 @@ import time
 import pytest
 
 from repos import make_repo, write_files
-from spyc.file_index import build_index
+from spyc.core.file_index import build_index
 from spyc.search import Cancellation, Hit, search_text
 
 BACKENDS = [pytest.param(True, marks=pytest.mark.skipif(shutil.which("rg") is None, reason="ripgrep is not installed")),

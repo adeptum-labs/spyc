@@ -16,34 +16,3 @@
 #
 # Website: https://www.adeptum.se
 # Contact: info@adeptum.se
-
-
-from dataclasses import dataclass
-from typing import Protocol
-
-from rich.text import Text
-
-from spyc.document import Document
-
-
-@dataclass(frozen=True)
-class Item:
-    key: str
-    label: Text
-    line: int | None = None
-    column: int = 0
-
-
-@dataclass(frozen=True)
-class Choice:
-    key: str
-    line: int | None = None
-    column: int = 0
-
-
-class PickerSource(Protocol):
-    placeholder: str
-
-    def search(self, query: str) -> list[Item]: ...
-
-    def preview(self, item: Item) -> Document | None: ...

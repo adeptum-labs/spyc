@@ -158,7 +158,7 @@ def test_the_pyinstaller_command_bundles_the_queries_and_the_dynamic_libraries(t
 
 
 def test_every_grammar_that_a_language_names_is_collected(tmp_path):
-    from spyc.languages import LANGUAGES
+    from spyc.core.languages import LANGUAGES
     command = build_deb.pyinstaller_command(tmp_path, onefile=False, project=PROJECT)
     wanted = {language.grammar[0] for language in LANGUAGES if language.grammar}
     assert {"tree_sitter_python", "tree_sitter_typescript", "tree_sitter_kotlin", "tree_sitter_bash"} <= wanted

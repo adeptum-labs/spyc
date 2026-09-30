@@ -22,8 +22,8 @@ from textual.app import App
 from textual.widgets import OptionList
 
 from repos import write_files
-from spyc.file_index import build_index
-from spyc.overview import build_overview
+from spyc.core.file_index import build_index
+from spyc.core.overview import build_overview
 from spyc.widgets.overview_pane import OverviewPane
 from spyc.widgets.status_bar import StatusBar
 

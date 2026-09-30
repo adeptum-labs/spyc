@@ -19,7 +19,7 @@
 
 
 from repos import git, write_files
-from spyc.file_index import build_index
+from spyc.core.file_index import build_index
 
 
 def test_git_index_lists_tracked_and_untracked_but_not_ignored_files(git_repo):

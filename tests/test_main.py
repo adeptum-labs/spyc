@@ -24,7 +24,7 @@ import pytest
 
 import spyc.__main__ as entry
 from spyc.__main__ import main
-from spyc.location import Location
+from spyc.core.location import Location
 
 
 class RecordingApp:

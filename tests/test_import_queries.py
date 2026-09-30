@@ -22,7 +22,7 @@ import re
 
 import pytest
 
-from spyc.languages import LANGUAGES, LANGUAGES_BY_ID
+from spyc.core.languages import LANGUAGES, LANGUAGES_BY_ID
 from spyc.syntax.grammars import load_imports
 from spyc.syntax.tree_sitter_highlighter import compile_query
 

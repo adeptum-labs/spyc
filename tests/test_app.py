@@ -20,7 +20,7 @@
 
 from repos import make_repo, write_files
 from spyc.app import SpycApp
-from spyc.location import Location
+from spyc.core.location import Location
 from spyc.state import StateStore
 from spyc.widgets.code_view import CodeView
 from spyc.widgets.file_tree import FileTree

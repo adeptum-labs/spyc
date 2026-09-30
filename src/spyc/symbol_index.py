@@ -31,9 +31,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from spyc.analysis import Analysis, analyse
+from spyc.core.fileio import read_limited
+from spyc.core.languages import CARGO_MANIFEST, GO_MODULE, Language, detect_language
 from spyc.deps.facts import FileFacts, facts_from_json, facts_to_json
-from spyc.fileio import read_limited
-from spyc.languages import CARGO_MANIFEST, GO_MODULE, Language, detect_language
 from spyc.symbols import Symbol
 
 log = logging.getLogger(__name__)

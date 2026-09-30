@@ -24,9 +24,9 @@ from pathlib import Path
 
 from rich.text import Text
 
-from spyc.document import Document, load_document
-from spyc.picking import Item
-from spyc.printable import printable
+from spyc.core.document import Document, load_document
+from spyc.core.picking import Item
+from spyc.core.printable import printable
 from spyc.search import MAX_HITS, Cancellation, Hit, SearchResult, search_text
 
 

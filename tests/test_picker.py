@@ -25,10 +25,10 @@ from rich.text import Text
 from textual.app import App
 from textual.widgets import OptionList
 
-from spyc.document import Document
-from spyc.file_picker import FilePickerSource
-from spyc.fuzzy import PathMatcher
-from spyc.picking import Choice, Item
+from spyc.core.document import Document
+from spyc.core.file_picker import FilePickerSource
+from spyc.core.fuzzy import PathMatcher
+from spyc.core.picking import Choice, Item
 from spyc.screens.picker import Picker
 from spyc.widgets.code_view import CodeView
 from waiting import until

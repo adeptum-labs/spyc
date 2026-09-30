@@ -22,8 +22,8 @@ import time
 
 import pytest
 
-import spyc.cells
-from spyc.cells import cell_of_char, char_at_cell, expand_tabs, fit_cells, line_cells, widest_cells
+import spyc.core.cells
+from spyc.core.cells import cell_of_char, char_at_cell, expand_tabs, fit_cells, line_cells, widest_cells
 
 
 def test_ascii_columns_are_cells():
@@ -75,8 +75,8 @@ def test_the_widest_line_is_measured_in_cells_not_characters():
 def test_long_lines_agree_with_the_plain_walk(line, monkeypatch):
     expected = [cell_of_char(line, column) for column in range(len(line) + 3)]
     expected_chars = [char_at_cell(line, cell) for cell in range(expected[-1] + 3)]
-    monkeypatch.setattr(spyc.cells, "CHECKPOINT", 8)
-    spyc.cells._checkpoints.cache_clear()
+    monkeypatch.setattr(spyc.core.cells, "CHECKPOINT", 8)
+    spyc.core.cells._checkpoints.cache_clear()
     assert [cell_of_char(line, column) for column in range(len(line) + 3)] == expected
     assert [char_at_cell(line, cell) for cell in range(expected[-1] + 3)] == expected_chars
 

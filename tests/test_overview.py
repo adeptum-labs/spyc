@@ -18,10 +18,10 @@
 # Contact: info@adeptum.se
 
 
-import spyc.overview
+import spyc.core.overview
 from repos import write_files
-from spyc.file_index import build_index
-from spyc.overview import build_overview, summary_text
+from spyc.core.file_index import build_index
+from spyc.core.overview import build_overview, summary_text
 
 
 def overview_of(root, files):
@@ -54,7 +54,7 @@ def test_only_a_readme_in_the_root_is_previewed(tmp_path):
 
 
 def test_measuring_stops_at_the_stat_limit(tmp_path, monkeypatch):
-    monkeypatch.setattr(spyc.overview, "STAT_LIMIT", 2)
+    monkeypatch.setattr(spyc.core.overview, "STAT_LIMIT", 2)
     overview = overview_of(tmp_path, {f"f{number}.py": "x" for number in range(5)})
     assert overview.sampled and overview.languages[0].files == 2
 

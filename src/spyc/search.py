@@ -29,8 +29,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from spyc.file_index import SKIPPED_DIRECTORIES
-from spyc.fileio import read_limited
+from spyc.core.file_index import SKIPPED_DIRECTORIES
+from spyc.core.fileio import read_limited
 
 MAX_HITS = 2000
 MAX_LINE = 500

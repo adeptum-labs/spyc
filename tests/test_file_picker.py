@@ -18,8 +18,8 @@
 # Contact: info@adeptum.se
 
 
-from spyc.file_picker import FilePickerSource
-from spyc.fuzzy import PathMatcher
+from spyc.core.file_picker import FilePickerSource
+from spyc.core.fuzzy import PathMatcher
 
 PATHS = ["src/app.py", "README.md", "tests/test_app.py"]
 

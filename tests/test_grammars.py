@@ -21,7 +21,7 @@
 import pytest
 from tree_sitter import Query
 
-from spyc.languages import LANGUAGES, LANGUAGES_BY_ID
+from spyc.core.languages import LANGUAGES, LANGUAGES_BY_ID
 from spyc.syntax.factory import make_highlighter
 from spyc.syntax.grammars import load_grammar
 

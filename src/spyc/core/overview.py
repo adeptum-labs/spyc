@@ -23,10 +23,10 @@ from pathlib import Path
 
 from rich.text import Text
 
-from spyc.file_index import MAX_INDEXED_FILES, FileIndex
-from spyc.languages import detect_language
-from spyc.printable import printable
-from spyc.project import KeyFile, detect_build_systems, key_files
+from spyc.core.file_index import MAX_INDEXED_FILES, FileIndex
+from spyc.core.languages import detect_language
+from spyc.core.printable import printable
+from spyc.core.project import KeyFile, detect_build_systems, key_files
 
 STAT_LIMIT = 50_000
 README_LINES = 40

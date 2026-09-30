@@ -26,12 +26,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from spyc.core.fileio import read_limited
 from spyc.coverage.cobertura import parse_cobertura
 from spyc.coverage.gocover import parse_gocover
 from spyc.coverage.jacoco import parse_jacoco
 from spyc.coverage.lcov import parse_lcov
 from spyc.coverage.model import Report, ReportError
-from spyc.fileio import read_limited
 
 log = logging.getLogger(__name__)
 # A report is read whole and held as objects, several times its size in memory.

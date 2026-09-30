@@ -20,9 +20,9 @@
 
 from tree_sitter import Parser, Query
 
+from spyc.core.languages import LANGUAGES_BY_ID
 from spyc.deps.extract import MAX_IMPORTS, MAX_USED, facts_of
 from spyc.deps.facts import ClassDef, Import
-from spyc.languages import LANGUAGES_BY_ID
 from spyc.syntax.grammars import load_imports
 
 JAVA = """package com.acme.order;

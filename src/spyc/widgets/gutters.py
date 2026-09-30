@@ -23,13 +23,13 @@ from typing import Protocol
 from rich.style import Style
 from rich.text import Text
 
-from spyc.cells import fit_cells
+from spyc.core.cells import fit_cells
+from spyc.core.printable import printable
+from spyc.core.timeago import age
 from spyc.coverage.model import Lines
 from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
-from spyc.printable import printable
 from spyc.syntax.theme import CodeTheme
-from spyc.timeago import age
 
 MIN_DIGITS = 3
 

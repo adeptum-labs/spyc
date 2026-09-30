@@ -24,8 +24,8 @@ import sys
 from pathlib import Path
 
 from spyc.app import SpycApp
-from spyc.location import Location, parse_location
-from spyc.project import find_root
+from spyc.core.location import Location, parse_location
+from spyc.core.project import find_root
 from spyc.selftest import problems
 from spyc.state import configure_logging
 

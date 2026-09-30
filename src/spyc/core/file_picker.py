@@ -23,11 +23,11 @@ from pathlib import Path
 
 from rich.text import Text
 
-from spyc.document import Document, load_document
-from spyc.fuzzy import Match, PathMatcher
-from spyc.location import split_line_suffix
-from spyc.picking import Item
-from spyc.printable import printable
+from spyc.core.document import Document, load_document
+from spyc.core.fuzzy import Match, PathMatcher
+from spyc.core.location import split_line_suffix
+from spyc.core.picking import Item
+from spyc.core.printable import printable
 
 
 class FilePickerSource:

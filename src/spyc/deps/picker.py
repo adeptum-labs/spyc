@@ -20,11 +20,11 @@
 
 from rich.text import Text
 
+from spyc.core.document import Document
+from spyc.core.fuzzy import rank_counted
+from spyc.core.picking import Item
+from spyc.core.printable import printable
 from spyc.deps.graph import DependencyGraph
-from spyc.document import Document
-from spyc.fuzzy import rank_counted
-from spyc.picking import Item
-from spyc.printable import printable
 
 LIST_LIMIT = 200
 
