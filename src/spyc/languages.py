@@ -70,8 +70,8 @@ TAGS = {
 IMPORTS = {
     "c": (("spyc.syntax", "queries/c/imports.scm"),),
     "cpp": (("spyc.syntax", "queries/cpp/imports.scm"),),
-    "go":(("spyc.syntax", "queries/go/imports.scm"),),
-    "java":(("spyc.syntax", "queries/java/imports.scm"),),
+    "go": (("spyc.syntax", "queries/go/imports.scm"),),
+    "java": (("spyc.syntax", "queries/java/imports.scm"),),
     "kotlin": (("spyc.syntax", "queries/kotlin/imports.scm"),),
     "python": (("spyc.syntax", "queries/python/imports.scm"),),
     "rust": (("spyc.syntax", "queries/rust/imports.scm"),),

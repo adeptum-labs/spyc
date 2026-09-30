@@ -30,8 +30,9 @@ MAX_IMPORTS = 5000
 MAX_USED = 2000
 MAX_CLASSES = 100
 MAX_USE_DEPTH = 16
+MAX_PARENT_WALK = 256
 PATH_NODES = frozenset({"identifier", "crate", "self", "super", "scoped_identifier"})
-VERSION =re.compile(r"^v[0-9]+$")
+VERSION = re.compile(r"^v[0-9]+$")
 VERSION_SUFFIX = re.compile(r"\.v[0-9]+$")
 
 
@@ -98,6 +99,33 @@ def _use_paths(root) -> Iterator[tuple[str, bool]]:
             stack.extend((child, prefix, depth + 1) for child in reversed(node.named_children))
 
 
+# The inline modules a declaration is inside, outermost first; None for one nested too deep to be read.
+def _inline_modules(node) -> list[str] | None:
+    names, parent = [], node.parent
+    for _ in range(MAX_PARENT_WALK):
+        if parent is None:
+            return names[::-1]
+        if parent.type == "mod_item":
+            name = parent.child_by_field_name("name")
+            names.append(_text(name) if name is not None else "")
+            if len(names) > MAX_USE_DEPTH:
+                return None
+        parent = parent.parent
+    return None
+
+
+# A path written inside inline modules, as one from the module of the file: in mod tests { use super::*; }
+# the super is the file's own module, which is no dependency, and not the module above the file.
+def _within(path: str, modules: list[str]) -> str:
+    segments = path.split("::")
+    if not modules or segments[0] not in ("self", "super"):
+        return path
+    rest, here = (segments[1:] if segments[0] == "self" else segments), modules
+    while rest[:1] == ["super"] and here:
+        rest, here = rest[1:], here[:-1]
+    return "::".join(rest if rest[:1] == ["super"] else ["self", *here, *rest])
+
+
 # The package of a file, the classes it defines, what it imports and the capitalised
 # names it uses (identifier nodes only, so comments and strings do not count).
 def facts_of(tree, query) -> FileFacts:
@@ -117,11 +145,13 @@ def facts_of(tree, query) -> FileFacts:
             if len(imports) < MAX_IMPORTS:
                 imports.append(Import(_text(captures["path"][0]), "wildcard" in captures, "static" in captures))
         elif "use" in captures:
-            paths = _use_paths(captures["use"][0].child_by_field_name("argument"))
-            imports += (Import(path, wildcard) for path, wildcard in islice(paths, MAX_IMPORTS - len(imports)))
+            modules = _inline_modules(captures["use"][0])
+            paths = _use_paths(captures["use"][0].child_by_field_name("argument")) if modules is not None else ()
+            imports += (Import(_within(path, modules), wildcard) for path, wildcard in islice(paths, MAX_IMPORTS - len(imports)))
         elif "mod" in captures:
-            if len(imports) < MAX_IMPORTS:
-                imports.append(Import(f"self::{_text(captures['mod'][0])}"))
+            modules = _inline_modules(captures["mod"][0].parent)
+            if len(imports) < MAX_IMPORTS and modules is not None:
+                imports.append(Import(_within(f"self::{_text(captures['mod'][0])}", modules)))
         elif "include" in captures:
             if len(imports) < MAX_IMPORTS:
                 imports.append(Import(_text(captures["include"][0])))

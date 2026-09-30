@@ -18,6 +18,8 @@
 # Contact: info@adeptum.se
 
 
+import time
+
 from spyc.deps.facts import FileFacts, Import
 from spyc.deps.golang import GoModules
 
@@ -84,3 +86,12 @@ def test_a_name_shared_by_thousands_of_directories_gives_the_nearest_or_nothing_
     assert few.resolve("a/main.go", Import("x.com/y/shared/util", names=("U",))) == (
         "a/shared/util", {"a/shared/util/u.go"}, None)
     assert few.resolve("c/main.go", Import("x.com/y/shared/util", names=("U",))) == (None, set(), None)
+
+
+def test_an_import_path_of_thousands_of_segments_is_resolved_fast_with_and_without_a_module_file():
+    started = time.perf_counter()
+    long_path = "x.com/" + "/".join(["a"] * 20000)
+    modules = GoModules({path: facts for path, facts in FILES.items() if facts.language != "gomod"})
+    assert modules.resolve("cmd/app/main.go", Import(long_path)) == (None, set(), "x.com/a/a")
+    assert MODULES.resolve("cmd/app/main.go", Import(long_path)) == (None, set(), "x.com/a/a")
+    assert time.perf_counter() - started < 0.5

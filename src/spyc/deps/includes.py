@@ -24,7 +24,8 @@ from collections.abc import Iterable
 
 MAX_AMBIGUOUS = 50
 MAX_WALK = 32
-INCLUDE_DIRECTORIES = ("", "include", "inc", "src")
+LIBRARY_DIRECTORIES = ("include", "inc")
+INCLUDE_DIRECTORIES = ("", *LIBRARY_DIRECTORIES, "src")
 # The header directories of the system say nothing about the project, as its other system headers do not.
 OPERATING_SYSTEM_DIRECTORIES = frozenset({"sys", "arpa", "netinet", "net", "linux", "asm", "bits"})
 
@@ -40,15 +41,17 @@ def _shared_directories(path: str, here: str) -> int:
 
 # Which header or source of the project an include names, worked out from the paths alone: beside the
 # including file (quoted includes only), in an include directory of it or of a directory above, else by the
-# end of its path.
+# end of its path. An angle include is looked for where a compiler is told to look and not beside the
+# file, and one without a directory (<stdint.h>) is a system header unless the project keeps it in an
+# include directory: a project often has its own copy of a system header for one platform.
 class IncludeModules:
     def __init__(self, paths: Iterable[str]) -> None:
         self._paths = set(paths)
         self._by_name: dict[str, list[str]] = defaultdict(list)
         for path in sorted(self._paths):
             self._by_name[posixpath.basename(path)].append(path)
-        self._ends: dict[str, list[str]] = {}
-        self._searched: dict[tuple[str, str], str | None] = {}
+        self._ends: dict[tuple[str, bool], list[str]] = {}
+        self._searched: dict[tuple[str, str, bool], str | None] = {}
 
     # The path reached and, for a library header that is not in the project, the name of the library.
     def resolve(self, importer: str, include: str) -> tuple[str | None, str | None]:
@@ -56,34 +59,39 @@ class IncludeModules:
         here = posixpath.dirname(importer)
         if quoted and (beside := posixpath.normpath(posixpath.join(here, spec))) in self._paths:
             return beside, None
-        found = self._search(spec, here) or self._by_end(spec, here)
+        found = self._search(spec, here, quoted) or self._by_end(spec, here, quoted)
         if found is not None or quoted or "/" not in spec:
             return found, None
         library = spec.split("/")[0]
         return None, None if library in OPERATING_SYSTEM_DIRECTORIES else library
 
-    def _search(self, spec: str, here: str) -> str | None:
-        key = (spec, here)
+    def _search(self, spec: str, here: str, quoted: bool) -> str | None:
+        key = (spec, here, quoted)
         if key not in self._searched:
-            self._searched[key] = self._look_upwards(spec, here)
+            self._searched[key] = self._look_upwards(spec, here, quoted)
         return self._searched[key]
 
-    def _look_upwards(self, spec: str, directory: str) -> str | None:
-        for _ in range(MAX_WALK):
+    def _look_upwards(self, spec: str, directory: str, quoted: bool) -> str | None:
+        for level in range(MAX_WALK):
             for prefix in INCLUDE_DIRECTORIES:
-                if (candidate := posixpath.normpath(posixpath.join(directory, prefix, spec))) in self._paths:
+                if (prefix or quoted or level) and (
+                        candidate := posixpath.normpath(posixpath.join(directory, prefix, spec))) in self._paths:
                     return candidate
             if not directory:
                 break
             directory = posixpath.dirname(directory)
         return None
 
-    def _by_end(self, spec: str, here: str) -> str | None:
-        if spec not in self._ends:
+    def _by_end(self, spec: str, here: str, quoted: bool) -> str | None:
+        system_name = not quoted and "/" not in spec
+        if (spec, system_name) not in self._ends:
             named = self._by_name.get(posixpath.basename(spec), [])
-            self._ends[spec] = named if "/" not in spec or len(named) > MAX_AMBIGUOUS else [
-                path for path in named if path == spec or path.endswith("/" + spec)]
-        candidates = self._ends[spec]
+            if system_name:
+                named = [path for path in named if posixpath.basename(posixpath.dirname(path)) in LIBRARY_DIRECTORIES]
+            elif "/" in spec and len(named) <= MAX_AMBIGUOUS:
+                named = [path for path in named if path == spec or path.endswith("/" + spec)]
+            self._ends[spec, system_name] = named
+        candidates = self._ends[spec, system_name]
         if not candidates or len(candidates) > MAX_AMBIGUOUS:
             return None
         scores = {path: _shared_directories(path, here) for path in candidates}

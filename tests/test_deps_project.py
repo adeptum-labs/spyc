@@ -80,3 +80,14 @@ def test_go_rust_and_c_files_go_from_the_source_through_the_index_and_its_cache_
     later.update(paths)
     check_native(DependencyGraph(later.facts()))
     assert {facts.language for facts in later.facts().values()} == {"gomod", "go", "cargo", "rust", "c"}
+
+
+def test_a_test_module_that_uses_its_parent_makes_no_cycle_with_the_module_file(tmp_path):
+    files = {"Cargo.toml": '[package]\nname = "t"\n', "src/lib.rs": "mod util;\n",
+             "src/util.rs": "pub fn f() {}\n#[cfg(test)]\nmod tests { use super::*; use super::f; }\n"}
+    write_files(tmp_path / "project", files)
+    index = SymbolIndex(tmp_path / "project", tmp_path / "cache.json")
+    index.update(tuple(sorted(files)))
+    graph = DependencyGraph(index.facts())
+    assert [link.node.key for link in graph.outgoing(Node(FILE, "src/lib.rs"))] == ["src/util.rs"]
+    assert graph.outgoing(Node(FILE, "src/util.rs")) == [] and graph.cyclic_nodes(FILE) == []

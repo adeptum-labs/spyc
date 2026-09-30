@@ -20,6 +20,7 @@
 
 (import_spec) @spec
 (selector_expression operand: (identifier) @operand field: (field_identifier) @field)
+(qualified_type package: (package_identifier) @operand name: (type_identifier) @field)
 (source_file (function_declaration name: (identifier) @define))
 (source_file (type_declaration (type_spec name: (type_identifier) @define)))
 (source_file (type_declaration (type_alias name: (type_identifier) @define)))

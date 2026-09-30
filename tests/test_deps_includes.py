@@ -77,3 +77,19 @@ def test_the_directories_of_the_operating_system_headers_are_not_libraries(inclu
 
 def test_a_project_header_in_a_directory_named_like_a_system_one_is_still_found():
     assert IncludeModules(["compat/sys/types.h", "a.c"]).resolve("a.c", "<sys/types.h>") == ("compat/sys/types.h", None)
+
+
+SHIMS = IncludeModules(["win/stdint.h", "win/x.c", "app/main.c", "univalue/include/univalue.h", "src/config.h", "compat/dirent.h"])
+
+
+@pytest.mark.parametrize("importer, include, expected", [
+    ("app/main.c", "<stdint.h>", (None, None)),
+    ("win/x.c", "<stdint.h>", (None, None)),
+    ("app/main.c", "<dirent.h>", (None, None)),
+    ("win/x.c", '"stdint.h"', ("win/stdint.h", None)),
+    ("app/main.c", '"stdint.h"', ("win/stdint.h", None)),
+    ("app/main.c", "<univalue.h>", ("univalue/include/univalue.h", None)),
+    ("app/main.c", "<config.h>", ("src/config.h", None)),
+])
+def test_a_bare_angle_include_is_a_system_header_unless_the_project_has_it_in_an_include_directory(importer, include, expected):
+    assert SHIMS.resolve(importer, include) == expected

@@ -253,3 +253,58 @@ def test_c_and_cpp_includes_keep_their_delimiters_so_that_the_two_kinds_can_be_t
 def test_a_c_file_with_thousands_of_includes_is_capped():
     source = "".join(f'#include "h{index}.h"\n' for index in range(MAX_IMPORTS + 50))
     assert len(facts("c", source).imports) == MAX_IMPORTS
+
+
+RUST_INLINE = """use a::x;
+mod tests {
+    use super::*;
+    use super::helper;
+    use self::inner::Y;
+    mod inner_file;
+}
+mod outer {
+    mod deep {
+        use super::super::z;
+        use super::w;
+        use super::super::super::v;
+        use crate::k;
+    }
+}
+"""
+
+
+def test_super_and_self_inside_an_inline_module_are_read_from_that_module_and_not_from_the_file():
+    assert [(imported.path, imported.wildcard) for imported in facts("rust", RUST_INLINE).imports] == [
+        ("a::x", False), ("self", True), ("self::helper", False), ("self::tests::inner::Y", False),
+        ("self::tests::inner_file", False), ("self::z", False), ("self::outer::w", False), ("super::v", False),
+        ("crate::k", False)]
+
+
+def test_a_use_declaration_nested_deeper_than_the_inline_module_cap_is_dropped_not_misread():
+    deep = "".join(f"mod m{index} {{ " for index in range(40)) + "use super::x; " + "}" * 40 + "\nuse b::y;\n"
+    assert [imported.path for imported in facts("rust", deep).imports] == ["b::y"]
+
+
+GO_TYPES = """package p
+
+import (
+    "example.com/proj/store"
+    s "example.com/proj/shop"
+    "example.com/proj/api/v1"
+)
+
+type H struct {
+    store.Base
+    db *store.DB
+    users []store.User
+}
+
+func New(o *store.Options) shop.Thing { return s.Thing{} }
+var x = v1.NewUser()
+"""
+
+
+def test_go_types_written_through_an_import_count_as_names_used_and_so_do_composite_literals_and_embedded_fields():
+    imports = {imported.path: imported.names for imported in facts("go", GO_TYPES).imports}
+    assert imports["example.com/proj/store"] == ("Base", "DB", "Options", "User")
+    assert imports["example.com/proj/shop"] == ("Thing",)

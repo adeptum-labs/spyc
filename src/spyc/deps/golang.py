@@ -76,7 +76,7 @@ class GoModules:
         if self._modules:
             return None, False
         segments = path.split("/")
-        for length in range(len(segments), 1, -1):
+        for length in range(min(len(segments), MAX_SEGMENTS), 1, -1):
             if found := self._by_tail.get("/".join(segments[-length:])):
                 return self._nearest(found, posixpath.dirname(importer)), True
         return None, False

@@ -18,6 +18,8 @@
 # Contact: info@adeptum.se
 
 
+import time
+
 import pytest
 
 from spyc.deps.facts import FileFacts, Import
@@ -78,3 +80,9 @@ def test_a_thousand_super_segments_and_a_thousand_nested_directories_are_no_trou
     deep = "/".join(f"d{index}" for index in range(1000))
     crates = crates_of(["src/lib.rs", f"src/{deep}/x.rs"], {})
     assert crates.resolve(f"src/{deep}/x.rs", Import("crate::nothing")) == ("src/lib.rs", None)
+
+
+def test_a_path_of_thousands_of_segments_resolves_to_the_deepest_module_that_can_exist_and_is_fast():
+    started = time.perf_counter()
+    assert CRATES.resolve("src/lib.rs", Import("crate::" + "::".join(["a"] * 5000))) == ("src/a/mod.rs", None)
+    assert time.perf_counter() - started < 0.5

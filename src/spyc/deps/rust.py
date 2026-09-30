@@ -26,6 +26,7 @@ from spyc.deps.facts import FileFacts, Import
 STD_CRATES = frozenset({"std", "core", "alloc"})
 RELATIVE = frozenset({"crate", "self", "super"})
 MAX_SUPER = 32
+MAX_MODULE_DEPTH = 64
 
 
 # Which module file a Rust path names, worked out from the paths and manifests alone: the root of a crate is
@@ -96,9 +97,10 @@ class RustCrates:
         base = posixpath.join(root_dir, *module)
         return next((found for found in (f"{base}.rs", posixpath.join(base, "mod.rs")) if found in self._paths), None)
 
-    # What comes after the last module on the path is an item of it.
+    # What comes after the last module on the path is an item of it. Modules are not nested thousands deep,
+    # and trying every prefix of a path that long would take minutes.
     def _deepest(self, root_dir: str, module: list[str]) -> str | None:
-        for length in range(len(module), -1, -1):
+        for length in range(min(len(module), MAX_MODULE_DEPTH), -1, -1):
             if (found := self._file_of(root_dir, module[:length])) is not None:
                 return found
         return None

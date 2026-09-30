@@ -31,7 +31,7 @@ from spyc.syntax.grammars import load_imports, load_tags
 from spyc.syntax.tree_sitter_highlighter import compile_query
 
 MODULE_LINE = re.compile(r'^module\s+"?([^\s"]+)"?', re.MULTILINE)
-SECTION_LINE = re.compile(r"^\[+\s*([^\[\]]+?)\s*\]+")
+SECTION_LINE = re.compile(r"^\[+([^\[\]]*)\]")
 NAME_LINE = re.compile(r"""^name\s*=\s*["']([^"']+)["']""")
 
 
@@ -53,7 +53,7 @@ def _crate_facts(text: str) -> FileFacts:
     for line in text.splitlines():
         stripped = line.strip()
         if header := SECTION_LINE.match(stripped):
-            section = header[1]
+            section = header[1].strip()
         elif section in ("package", "lib") and (found := NAME_LINE.match(stripped)):
             names.setdefault(section, found[1])
     name = names.get("lib") or names.get("package")

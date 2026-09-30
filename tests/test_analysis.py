@@ -18,6 +18,8 @@
 # Contact: info@adeptum.se
 
 
+import time
+
 import pytest
 
 import spyc.analysis
@@ -81,3 +83,9 @@ def test_a_cargo_manifest_gives_the_name_a_crate_is_used_by_without_a_parse(mani
     result = analyse(manifest, LANGUAGES_BY_ID["cargo"])
     assert result.symbols == [] and result.facts.language == "cargo"
     assert [imported.path for imported in result.facts.imports] == expected
+
+
+def test_a_manifest_line_of_thousands_of_spaces_after_a_bracket_is_read_in_linear_time():
+    started = time.perf_counter()
+    result = analyse("[" + " " * 1000 + "x\n[package]\nname = \"n\"\n", LANGUAGES_BY_ID["cargo"])
+    assert [imported.path for imported in result.facts.imports] == ["n"] and time.perf_counter() - started < 0.5
