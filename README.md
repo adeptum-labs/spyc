@@ -97,7 +97,7 @@ commit. The mouse works too: click to place the cursor, scroll to move.
 
 `G` draws the dependencies of the project as boxes in layers: what depends on something is above it, and a dashed line
 with a number, the files behind it, runs from each box to the ones it depends on. `Enter` goes into a box and shows its
-parts. Java, Kotlin, Python, JavaScript, TypeScript, TSX, Go, Rust, C and C++ are read. How each language is read and
+parts. Test files are left out until `t` shows them. Java, Kotlin, Python, JavaScript, TypeScript, TSX, Go, Rust, C and C++ are read. How each language is read and
 what the graph cannot see is described in the [wiki](https://github.com/adeptum-labs/spyc/wiki/Dependencies).
 
 ## Asking Claude

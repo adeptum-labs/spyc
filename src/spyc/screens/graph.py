@@ -54,10 +54,11 @@ class GraphScreen(Screen[Location | None]):
     BINDINGS = [
         Binding("escape,q", "close", "Back"),
         Binding("enter,right_square_bracket", "deeper", "Into"),
-        Binding("backspace,left_square_bracket", "shallower", "Up"),
+        Binding("backspace,left_square_bracket", "shallower", "Up", key_display="bksp"),
         Binding("slash", "pick", "Find"),
         Binding("o", "open", "Open"),
         Binding("c", "cycle", "Cycles"),
+        Binding("t", "tests", "Tests"),
         Binding("a", "about", "About"),
         Binding("left,h", "move(0,-1)", show=False),
         Binding("right,l", "move(0,1)", show=False),
@@ -81,6 +82,7 @@ class GraphScreen(Screen[Location | None]):
         self.scope: Member = ROOT
         self.selected: Member | None = None
         self._timer = None
+        self._tests = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -115,15 +117,20 @@ class GraphScreen(Screen[Location | None]):
             self._timer = None
 
     def _open(self, graph: DependencyGraph, previous: tuple[Member, Member | None] | None = None) -> None:
-        self._hierarchy = Hierarchy(graph)
+        self._tests = self._tests or graph.code.empty
+        shown = graph if self._tests else graph.code
+        self._hierarchy = Hierarchy(shown)
         self._drawing = None
-        if graph.empty:
+        if shown.empty:
             return
         if previous is not None and self._hierarchy.members(previous[0]):
             self._show(*previous)
             return
-        unit = graph.unit_of(self._path) if self._path else None
+        unit = shown.unit_of(self._path) if self._path else None
         self._show(*(self._hierarchy.locate(unit) if unit is not None else (self._hierarchy.settle(ROOT), None)))
+
+    def _shown(self) -> DependencyGraph:
+        return self._graph if self._tests else self._graph.code
 
     def _show(self, scope: Member, selected: Member | None = None) -> None:
         members = self._hierarchy.members(scope)
@@ -151,9 +158,14 @@ class GraphScreen(Screen[Location | None]):
             view.show([Text(self._message())], [])
             return
         view.show(self._painter.paint(self.selected), drawing.boxes)
-        header.update(self._status(len(drawing.boxes)))
+        header.update(Text.assemble(self._tests_label(), self._status(len(drawing.boxes))))
         if (box := next((box for box in drawing.boxes if box.node == self.selected), None)) is not None:
             view.reveal(box)
+
+    def _tests_label(self) -> str:
+        if not self._graph.has_tests:
+            return ""
+        return f"Tests: {'shown' if self._tests else 'hidden'} (t) · "
 
     def _status(self, boxes: int) -> Text:
         member = self.selected
@@ -199,13 +211,13 @@ class GraphScreen(Screen[Location | None]):
 
     def action_pick(self) -> None:
         if self._graph is not None and self._drawing is not None:
-            self.app.push_screen(Picker(NodeSource(self._graph)), self._picked)
+            self.app.push_screen(Picker(NodeSource(self._shown())), self._picked)
 
     def _picked(self, choice: Choice | None) -> None:
         if choice is None or self._graph is None:
             return
         level, _, key = choice.key.partition(":")
-        if self._graph.has(node := Node(level, key)):
+        if self._shown().has(node := Node(level, key)):
             self._go(*self._hierarchy.locate(node))
 
     def _paths(self) -> list[str]:
@@ -233,6 +245,11 @@ class GraphScreen(Screen[Location | None]):
         self.selected = (later or members)[0]
         self._redraw()
 
+    def action_tests(self) -> None:
+        self._tests = not self._tests
+        self._open(self._graph, (self.scope, self.selected))
+        self._redraw()
+
     def on_graph_view_clicked(self, message: GraphView.Clicked) -> None:
         message.stop()
         if message.node == self.selected:
@@ -242,6 +259,8 @@ class GraphScreen(Screen[Location | None]):
             self._redraw()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "tests":
+            return self._graph is not None and self._graph.has_tests
         return self._explain is not None if action == "about" else True
 
     def action_about(self) -> None:

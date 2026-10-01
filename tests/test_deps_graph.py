@@ -337,3 +337,15 @@ def test_go_test_files_draw_file_edges_but_no_directory_edges_so_an_external_tes
     assert graph.externals(Node(FILE, "foo/foo_test.go")) == [("github.com/stretchr/testify", 1)]
     assert graph.externals(Node(UNIT, "foo")) == []
     assert [link.node.key for link in graph.incoming(Node(UNIT, "foo"))] == ["testutil"]
+
+
+def test_the_code_view_of_a_graph_leaves_out_the_test_files_and_is_the_graph_itself_without_any():
+    graph = DependencyGraph({
+        "src/main/java/com/acme/order/Service.java": facts("com.acme.order", ["Service"]),
+        "src/test/java/com/acme/order/ServiceTest.java": facts("com.acme.order", ["ServiceTest"], [Import("com.acme.order.Service")]),
+    })
+    assert graph.has_tests and not graph.code.has_tests
+    assert [node.key for node in graph.nodes(FILE)] == ["src/main/java/com/acme/order/Service.java",
+                                                         "src/test/java/com/acme/order/ServiceTest.java"]
+    assert [node.key for node in graph.code.nodes(FILE)] == ["src/main/java/com/acme/order/Service.java"]
+    assert graph.code.code is graph.code

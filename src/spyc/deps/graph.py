@@ -29,6 +29,7 @@ from spyc.deps.includes import IncludeModules
 from spyc.deps.javascript import ScriptModules
 from spyc.deps.python import PythonModules
 from spyc.deps.rust import RustCrates
+from spyc.deps.testfiles import is_test_path
 
 UNIT, FILE = "unit", "file"
 LEVELS = (UNIT, FILE)
@@ -217,7 +218,8 @@ def _follow(imported: Import, project: _Definitions, reach: _Reach, wildcards: s
         reach.external[_external_name(imported.path)] += 1
 
 
-# Who depends on whom, at two levels: unit (a package, or a directory) and file.
+# Who depends on whom, at two levels: unit (a package, or a directory) and file. The same graph without the
+# test files is `code`, which is the graph itself when the project has no test files.
 # Built once and never changed, so another thread may read it.
 class DependencyGraph:
     def __init__(self, files: Mapping[str, FileFacts], stop: Callable[[], bool] = lambda: False) -> None:
@@ -238,6 +240,12 @@ class DependencyGraph:
             self._add_dependencies(path, facts, _reach(path, facts, project))
         for level in LEVELS:
             self._components[level] = components(self._out[level], self.nodes(level))
+        production = {path: facts for path, facts in self._files.items() if not is_test_path(path)}
+        self.code = self if len(production) == len(self._files) else DependencyGraph(production, stop)
+
+    @property
+    def has_tests(self) -> bool:
+        return self.code is not self
 
     def _add_structure(self, path: str, facts: FileFacts) -> None:
         unit, file = Node(UNIT, unit_key(path, facts)), Node(FILE, path)

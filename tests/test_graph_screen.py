@@ -302,3 +302,45 @@ def test_the_node_picker_finds_packages_directories_and_files():
     assert source.placeholder == "Find a package, directory or file by name"
     assert [item.key for item in source.search("acme.billing")] == ["unit:com.acme.billing"]
     assert source.search("Money")[0].key == "file:src/model/Money.java"
+
+
+TESTED = DependencyGraph({
+    **FILES,
+    "src/test/java/com/acme/web/ApiTest.java": facts("com.acme.web", ["ApiTest"], [Import("com.acme.order.Service")]),
+    "src/test/java/com/acme/support/Fixtures.java": facts("com.acme.support", ["Fixtures"], [Import("com.acme.model.Order")]),
+})
+
+
+async def test_tests_are_hidden_until_t_shows_them_and_the_header_says_which():
+    app = GraphApp(TESTED)
+    async with app.run_test(size=SIZE) as pilot:
+        await pilot.pause()
+        assert header(app).startswith("Tests: hidden (t) · ") and "support" not in screen_text(app)
+        await pilot.press("t")
+        assert header(app).startswith("Tests: shown (t) · ") and "support" in screen_text(app)
+        await pilot.press("t")
+        assert header(app).startswith("Tests: hidden (t) · ") and "support" not in screen_text(app)
+
+
+async def test_a_project_without_test_files_has_no_tests_switch():
+    app = GraphApp(GRAPH)
+    async with app.run_test(size=SIZE) as pilot:
+        await pilot.pause()
+        assert "Tests" not in header(app)
+        await pilot.press("t")
+        assert "Tests" not in header(app) and "model" in screen_text(app)
+
+
+async def test_a_project_of_only_tests_starts_with_them_shown():
+    app = GraphApp(DependencyGraph({"tests/test_a.py": FileFacts("", (), (), frozenset(), "python")}))
+    async with app.run_test(size=SIZE) as pilot:
+        await pilot.pause()
+        assert header(app).startswith("Tests: shown (t) · ")
+
+
+async def test_the_footer_names_the_up_key_in_letters_because_the_backspace_symbol_is_wider_than_its_cell():
+    app = GraphApp(GRAPH)
+    async with app.run_test(size=SIZE) as pilot:
+        await pilot.pause()
+        up = next(key for key in app.screen.query("FooterKey") if key.action == "shallower")
+        assert up.key_display == "bksp"
