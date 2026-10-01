@@ -96,58 +96,15 @@ commit. The mouse works too: click to place the cursor, scroll to move.
 ## Dependencies
 
 `G` draws the dependencies of the project as boxes in layers: what depends on something is above it, and a dashed line
-with a number, the files behind it, runs from each box to the ones it depends on. A box is a package or directory with
-everything below it rolled up; `Enter` goes into one and shows its parts, and below the deepest package the boxes are the
-files. A box that is in a cycle is marked in yellow, and what the project does not contain is counted on the box, not
-drawn. Java and Kotlin are drawn as packages, and Python, JavaScript, TypeScript, TSX, Go, Rust, C and C++ as directories.
-The graph is built in the background after the symbols; `G` says `Reading imports` until it is ready, and shows it as soon
-as it is.
-
-How each language is read:
-
-- **Java and Kotlin:** imports, and classes of the same package (or of a wildcard-imported package) that a file uses by
-  name.
-- **Python:** a module is found by the end of its dotted path, from the directory of the importer upwards first; relative
-  imports are followed and the standard library is not counted.
-- **JavaScript, TypeScript, TSX:** relative imports only (`./x`, `../y`, `x.js` for `x.ts`, directory `index` files).
-- **Go:** an import is matched to a package through the `go.mod` files of the project (without any, by the end of its
-  path) and reaches the files of the package that declare a name the file uses. The tests of a package (`_test.go`) are
-  drawn between files but not between directories, because Go lets them import packages that import the package back.
-- **Rust:** `mod` lines and `crate::`, `self::` and `super::` paths lead to the module files. A crate is named by its
-  `Cargo.toml`, so the crates of a workspace find each other.
-- **C and C++:** includes are found beside the file, in `include`, `inc` and `src` directories of it or above it, and by
-  the end of their path. A system header such as `<stdio.h>` is not counted.
-
-Limits:
-
-- Reflection, dependency injection, dynamic loading, macros and imports whose name is computed are invisible.
-- Java and Kotlin: a class written by its full name in the code without an import gives no edge; an import of a Kotlin
-  top-level function, extension function or type alias reaches the package but not a class; a variable or a type
-  parameter that shares its name with a class of the same package can add an edge that is not there.
-- JavaScript and TypeScript: path aliases (`tsconfig` paths, `@/x`, `~/x`) are not followed and count as external, and so
-  do Node's built-in modules.
-- Go: `replace` directives are not read; a project without a `go.mod` in view matches imports by the end of their path.
-- Rust: an import is drawn to the file of the module, not to the item in it; a module and the children it re-exports show
-  as a cycle, which is real coupling; `#[path]` and `extern crate` are not followed.
-- C and C++: only includes are drawn, so a `.cpp` is not linked to the `.h` it implements; `-I` paths and
-  `compile_commands.json` are not read, and an include named by a macro is invisible.
-- Files over 1 MB are skipped, and a file counts at most 5,000 imports and 100 classes.
+with a number, the files behind it, runs from each box to the ones it depends on. `Enter` goes into a box and shows its
+parts. Java, Kotlin, Python, JavaScript, TypeScript, TSX, Go, Rust, C and C++ are read. How each language is read and
+what the graph cannot see is described in the [wiki](https://github.com/adeptum-labs/spyc/wiki/Dependencies).
 
 ## Asking Claude
 
-`a` has Claude describe what is selected: in the tree the directory or file under the cursor, in the code a menu of the
-class around the cursor, the file, and its package or directory, and in the dependency graph the selected box.
-The answer is written into a screen of its own as Claude reads the code; `Escape` stops it and `r` asks again.
-
-The key exists only when spyc found `claude` on the path and `claude auth status` said it is logged in, which is checked
-once at start without sending a request. Each question starts `claude -p` in the root of the project with the tools
-`Read`, `Grep` and `Glob` only, so it cannot run commands, change files or use the web, and with the settings files of
-the user and the project left out. The question names what to describe and lists what spyc already knows of it:
-the files, the definitions, and what it depends on and what depends on it in the dependency graph. It is answered by
-`sonnet` at low effort; `SPYC_CLAUDE_MODEL` names another model. A question uses the quota of the Claude account.
-
-Answers are kept per project in `$XDG_CACHE_HOME/spyc`, by default `~/.cache/spyc`, and shown again at once. When the
-files have changed since, the answer is shown with a note and `r` asks again. A question is stopped after five minutes.
+`a` has Claude describe what is selected: a directory, a file, a class or a box in the dependency graph. The key exists
+only when `claude` is on the path and logged in. Claude gets read-only tools (`Read`, `Grep`, `Glob`) and answers are
+cached per project. More in the [wiki](https://github.com/adeptum-labs/spyc/wiki/Asking-Claude).
 
 ## Coverage
 
