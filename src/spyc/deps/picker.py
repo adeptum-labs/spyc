@@ -24,22 +24,23 @@ from spyc.core.document import Document
 from spyc.core.fuzzy import rank_counted
 from spyc.core.picking import Item
 from spyc.core.printable import printable
-from spyc.deps.graph import DependencyGraph
+from spyc.deps.graph import FILE, UNIT, DependencyGraph
 
 LIST_LIMIT = 200
 
 
-# The packages, files or classes of one level of the graph, to pick one to look at.
+# The packages, directories and files of the graph, to pick one to look at.
 class NodeSource:
     previews = False
+    placeholder = "Find a package, directory or file by name"
 
-    def __init__(self, graph: DependencyGraph, level: str) -> None:
-        self._nodes = graph.nodes(level)
-        self.placeholder = f"Find a {graph.kind_of(self._nodes[0]) if self._nodes else level} by name"
+    def __init__(self, graph: DependencyGraph) -> None:
+        self._nodes = [*graph.nodes(UNIT), *graph.nodes(FILE)]
 
     def search(self, query: str) -> list[Item]:
         ranked, _ = rank_counted([node.name for node in self._nodes], query, LIST_LIMIT)
-        return [Item(self._nodes[index].key, self._label(self._nodes[index].name, marked)) for index, marked in ranked]
+        return [Item(f"{self._nodes[index].level}:{self._nodes[index].key}", self._label(self._nodes[index].name, marked))
+                for index, marked in ranked]
 
     def preview(self, item: Item) -> Document | None:
         return None

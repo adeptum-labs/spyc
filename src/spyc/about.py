@@ -28,6 +28,7 @@ from spyc.symbol_index import SymbolIndex
 from spyc.symbols import CLASS_KINDS, enclosing_definition
 
 ROOT_DIRECTORY = "."
+DEFAULT_PACKAGE = "(default)"
 MAX_FACTS = 10
 MAX_DEFINITIONS = 40
 
@@ -51,6 +52,13 @@ class About:
     @staticmethod
     def class_named(path: str, name: str, line: int) -> Target:
         return Target("class", f"{path}:{name}", name, (path,), line)
+
+    def member(self, kind: str, key: str, paths: Sequence[str]) -> Target:
+        if kind == "file":
+            return self.file(key)
+        if kind == "directory":
+            return self.directory(key)
+        return Target("package", key, key or DEFAULT_PACKAGE, tuple(sorted(paths)))
 
     # The class around the cursor, the file, and the package or directory of the file: the smallest first.
     def scopes(self, path: str, document: Document, row: int) -> list[Target]:

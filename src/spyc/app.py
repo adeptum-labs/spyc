@@ -50,7 +50,8 @@ from spyc.core.tree_model import TreeModel
 from spyc.coverage.index import Coverage
 from spyc.coverage.reports import find_reports, load_reports
 from spyc.coverage.text import coverage_status
-from spyc.deps.graph import DependencyGraph, Node, Stopped
+from spyc.deps.graph import DependencyGraph, Stopped
+from spyc.deps.scopes import Member
 from spyc.editor import editor_command
 from spyc.git.blame import BlameLine
 from spyc.git.changes import LineChanges
@@ -282,7 +283,7 @@ class SpycApp(App):
         code = self._code
         path = code.display_path if code.document is not None else None
         screen = GraphScreen(self.project_root, self._graph, self._symbol_progress, path, self._graph_failure,
-                             self._explain_node if self._claude is not None else None)
+                             self._explain_member if self._claude is not None else None)
         self.push_screen(screen, self._location_chosen)
 
     # Claude is used only when it is installed and logged in, which is asked once, without spending a request.
@@ -313,12 +314,8 @@ class SpycApp(App):
         if target is not None:
             self._explain(target)
 
-    def _explain_node(self, node: Node) -> None:
-        target = self._about.node(node)
-        if target is None:
-            self.notify("Nothing to ask about here")
-        else:
-            self._explain(target)
+    def _explain_member(self, member: Member, paths: tuple[str, ...]) -> None:
+        self._explain(self._about.member(member.kind, member.key, paths))
 
     def _explain(self, target: Target) -> None:
         self.push_screen(ExplainScreen(self._claude, self._answers, self.project_root, target, self._about.facts_of))

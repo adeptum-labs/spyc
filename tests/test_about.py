@@ -102,6 +102,14 @@ def test_nodes_of_the_graph_become_targets(about):
     assert about.node(Node(FILE, "tools/one.py")) == Target("file", "tools/one.py", "tools/one.py", ("tools/one.py",))
 
 
+def test_a_member_of_the_diagram_becomes_a_target(about):
+    about = about[0]
+    assert about.member("package", "com.acme.a", ["src/a/A.java"]) == Target("package", "com.acme.a", "com.acme.a", ("src/a/A.java",))
+    assert about.member("directory", "tools", []) == about.directory("tools")
+    assert about.member("file", "tools/one.py", []) == about.file("tools/one.py")
+    assert about.member("package", "", ["A.java"]).label == "(default)"
+
+
 def test_a_node_the_graph_does_not_have_is_no_target(about):
     assert about[0].node(Node(UNIT, "nowhere")) is None
 

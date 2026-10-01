@@ -47,7 +47,7 @@ def header(app):
 
 
 def graph_text(app):
-    return "\n".join(line.plain for line in app.screen.query_one(GraphView).drawing.lines)
+    return "\n".join(line.plain for line in app.screen.query_one(GraphView).lines)
 
 
 async def test_g_shows_the_packages_of_a_java_project_around_the_open_file(tmp_path):
@@ -62,7 +62,7 @@ async def test_g_shows_the_packages_of_a_java_project_around_the_open_file(tmp_p
         assert header(app).startswith("package com.acme.a · 1 out · 0 in")
 
 
-async def test_o_in_the_graph_opens_the_file_of_a_class_at_its_line_and_escape_goes_back(tmp_path):
+async def test_o_in_the_graph_opens_the_file_and_escape_goes_back(tmp_path):
     write_files(tmp_path / "proj", JAVA)
     app = make_app(tmp_path / "proj", tmp_path)
     async with app.run_test(size=SIZE) as pilot:
@@ -73,10 +73,9 @@ async def test_o_in_the_graph_opens_the_file_of_a_class_at_its_line_and_escape_g
         await until(pilot, lambda: not isinstance(app.screen, GraphScreen))
         await pilot.press("G")
         await until(pilot, lambda: isinstance(app.screen, GraphScreen))
-        await pilot.press("right_square_bracket", "right_square_bracket", "o")
+        await pilot.press("right_square_bracket", "o")
         await until(pilot, lambda: not isinstance(app.screen, GraphScreen))
         await until(pilot, lambda: app.query_one(CodeView).display_path == "src/a/A.java")
-        await until(pilot, lambda: app.query_one(CodeView).cursor_row == 2)
 
 
 async def test_g_before_the_pass_is_done_shows_the_progress_and_the_graph_arrives_by_itself(tmp_path, monkeypatch):
@@ -90,7 +89,7 @@ async def test_g_before_the_pass_is_done_shows_the_progress_and_the_graph_arrive
         await until(pilot, lambda: isinstance(app.screen, GraphScreen))
         assert "Reading imports (indexing 1/2)" in graph_text(app)
         app._graph_ready(app._index_generation, graph)
-        await until(pilot, lambda: "com.acme.b" in graph_text(app))
+        await until(pilot, lambda: "com.acme" in graph_text(app))
 
 
 async def test_a_project_without_a_supported_language_gets_an_empty_graph_and_a_message(tmp_path):

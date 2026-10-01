@@ -32,20 +32,20 @@ from spyc.core.fuzzy import PathMatcher
 from spyc.core.location import Location
 from spyc.core.picking import Choice
 from spyc.core.printable import printable
-from spyc.deps.graph import UNIT, DependencyGraph, Node
+from spyc.deps.diagram import DENSE_BOXES, following, neighbour, paint, status_text
+from spyc.deps.graph import FILE, DependencyGraph, Node
+from spyc.deps.layout import Drawing, layout
 from spyc.deps.picker import NodeSource
-from spyc.deps.render import FocusLayout, entries_of, focus_layout, header_text, stacked_layout
+from spyc.deps.scopes import OWN_LABEL, ROOT, Hierarchy, Member, label_of, title_of
 from spyc.screens.picker import Picker
 from spyc.widgets.graph_view import GraphView
 
-NARROW_WIDTH = 100
 PROGRESS_INTERVAL = 0.5
 NOTHING_FOUND = "No dependencies found: no file is in a supported language"
 
 
-# One node in the middle, what depends on it on the left and what it depends on on
-# the right. Enter moves the middle to the highlighted node; the bracket keys go a
-# level down or up; o gives the code to open.
+# The packages of one scope as layered boxes, what depends on what above what it depends on. Enter goes into
+# the selected box and Backspace out of it; the arrow keys and Tab move the selection; o gives the code to open.
 class GraphScreen(Screen[Location | None]):
     DEFAULT_CSS = """
     GraphScreen #graph-header { height: 1; padding: 0 1; background: $panel; }
@@ -53,30 +53,32 @@ class GraphScreen(Screen[Location | None]):
     """
     BINDINGS = [
         Binding("escape,q", "close", "Back"),
-        Binding("enter", "centre", "Centre"),
-        Binding("backspace", "back", "Previous", show=False),
-        Binding("right_square_bracket", "deeper", "Deeper"),
-        Binding("left_square_bracket", "shallower", "Higher"),
+        Binding("enter,right_square_bracket", "deeper", "Into"),
+        Binding("backspace,left_square_bracket", "shallower", "Up"),
         Binding("slash", "pick", "Find"),
         Binding("o", "open", "Open"),
         Binding("c", "cycle", "Cycles"),
         Binding("a", "about", "About"),
-        Binding("left", "side('in')", show=False),
-        Binding("right", "side('out')", show=False),
-        Binding("tab,shift+tab", "toggle_side", show=False),
-        Binding("up,k", "move(-1)", show=False),
-        Binding("down,j", "move(1)", show=False),
+        Binding("left,h", "move(0,-1)", show=False),
+        Binding("right,l", "move(0,1)", show=False),
+        Binding("up,k", "move(-1,0)", show=False),
+        Binding("down,j", "move(1,0)", show=False),
+        Binding("tab", "step(1)", show=False),
+        Binding("shift+tab", "step(-1)", show=False),
     ]
 
     def __init__(self, root: Path, graph: DependencyGraph | None, progress: Callable[[], str],
                  path: str | None = None, failure: str | None = None,
-                 explain: Callable[[Node], None] | None = None) -> None:
+                 explain: Callable[[Member, tuple[str, ...]], None] | None = None) -> None:
         super().__init__()
         self._root, self._graph, self._progress, self._path = root, graph, progress, path
         self._failure, self._explain = failure, explain
-        self.centre: Node | None = None
-        self._side, self._index = "out", 0
-        self._history: list[Node] = []
+        self._hierarchy: Hierarchy | None = None
+        self._drawing: Drawing | None = None
+        self._edges: dict = {}
+        self._cycles: dict = {}
+        self.scope: Member = ROOT
+        self.selected: Member | None = None
         self._timer = None
 
     def compose(self) -> ComposeResult:
@@ -88,24 +90,16 @@ class GraphScreen(Screen[Location | None]):
     def on_mount(self) -> None:
         self.sub_title = "Dependencies"
         if self._graph is not None:
-            self.centre = self._initial(self._graph)
-            self._select_default()
+            self._open(self._graph)
         elif self._failure is None:
             self._timer = self.set_interval(PROGRESS_INTERVAL, self._redraw)
         self._redraw()
 
-    def on_resize(self) -> None:
-        self._redraw()
-
-    # A new graph arrives when the project is read again: the middle stays where it was if that node still exists.
+    # A new graph arrives when the project is read again: the scope and the selection stay if they still exist.
     def set_graph(self, graph: DependencyGraph) -> None:
         self._graph, self._failure = graph, None
         self._stop_waiting()
-        if self.centre is None or not graph.has(self.centre):
-            self._history.clear()
-            self.centre = self._initial(graph)
-            self._select_default()
-        self._clamp_selection()
+        self._open(graph, (self.scope, self.selected) if self._drawing is not None else None)
         self._redraw()
 
     # Something went wrong reading the project, so there is no graph to wait for.
@@ -119,110 +113,108 @@ class GraphScreen(Screen[Location | None]):
             self._timer.stop()
             self._timer = None
 
-    def _initial(self, graph: DependencyGraph) -> Node | None:
-        return (graph.unit_of(self._path) if self._path else None) or graph.most_connected(graph.nodes(UNIT))
+    def _open(self, graph: DependencyGraph, previous: tuple[Member, Member | None] | None = None) -> None:
+        self._hierarchy = Hierarchy(graph)
+        self._drawing = None
+        if graph.empty:
+            return
+        if previous is not None and self._hierarchy.members(previous[0]):
+            self._show(*previous)
+            return
+        unit = graph.unit_of(self._path) if self._path else None
+        self._show(*(self._hierarchy.locate(unit) if unit is not None else (self._hierarchy.settle(ROOT), None)))
 
-    def _neighbours(self, side: str):
-        if self._graph is None or self.centre is None:
-            return []
-        return self._graph.incoming(self.centre) if side == "in" else self._graph.outgoing(self.centre)
+    def _show(self, scope: Member, selected: Member | None = None) -> None:
+        members = self._hierarchy.members(scope)
+        self._edges = self._hierarchy.edges(scope)
+        self._cycles = self._hierarchy.cycles(self._edges, members)
+        labels = {member: printable(label_of(member, scope)) for member in members}
+        self._drawing = layout(members, self._edges, self._cycles, labels, printable(title_of(scope, self._root.resolve().name)))
+        self.scope = scope
+        self.selected = selected if selected in members else min(members, key=self._busyness, default=None)
 
-    def _select_default(self) -> None:
-        self._side, self._index = ("out" if self._neighbours("out") or not self._neighbours("in") else "in"), 0
+    def _busyness(self, member: Member) -> tuple[int, str]:
+        degree = len(self._edges.get(member, {})) + sum(member in targets for targets in self._edges.values())
+        return -degree, label_of(member, self.scope)
 
-    def _clamp_selection(self) -> None:
-        if not self._neighbours(self._side):
-            self._side = "in" if self._side == "out" else "out"
-        self._index = min(self._index, max(len(self._neighbours(self._side)) - 1, 0))
+    def _go(self, scope: Member, selected: Member | None = None) -> None:
+        self._show(scope, selected)
+        self._redraw()
 
     def _redraw(self) -> None:
         view, header = self.query_one(GraphView), self.query_one("#graph-header", Static)
-        graph = self._graph
-        if graph is None or self.centre is None:
+        drawing = self._drawing
+        if drawing is None:
             header.update(Text(""))
-            view.show(FocusLayout([Text(self._message(graph))], []))
+            view.show([Text(self._message())], [])
             return
-        left = entries_of(graph, self.centre, graph.incoming(self.centre), printable)
-        right = entries_of(graph, self.centre, graph.outgoing(self.centre), printable)
-        selected = (self._side, self._index) if self._neighbours(self._side) else None
-        layout = focus_layout if self.size.width >= NARROW_WIDTH else stacked_layout
-        header.update(header_text(graph, self.centre, printable))
-        drawing = layout(printable(self.centre.name), left, right, self.size.width, selected)
-        view.show(drawing)
-        selected_place = next((place for place in drawing.places if (place.side, place.index) == selected), None)
-        if selected_place is not None:
-            view.reveal(selected_place.row)
+        view.show(paint(drawing, self.selected), drawing.boxes)
+        header.update(self._status(len(drawing.boxes)))
+        if (box := next((box for box in drawing.boxes if box.node == self.selected), None)) is not None:
+            view.reveal(box)
 
-    def _message(self, graph: DependencyGraph | None) -> str:
+    def _status(self, boxes: int) -> Text:
+        member = self.selected
+        if member is None:
+            return Text("")
+        outgoing, incoming = len(self._edges.get(member, {})), sum(member in targets for targets in self._edges.values())
+        kind = f"{member.kind} {OWN_LABEL}" if member.own else member.kind
+        return status_text(kind, printable(member.key), outgoing, incoming, self._hierarchy.externals(member),
+                           len(self._cycles.get(member, ())), boxes >= DENSE_BOXES)
+
+    def _message(self) -> str:
         if self._failure is not None:
             return self._failure
-        if graph is not None:
+        if self._graph is not None:
             return NOTHING_FOUND
         progress = self._progress()
         return f"Reading imports ({progress})" if progress else "Reading imports"
 
-    def _go(self, node: Node) -> None:
-        if self.centre is not None:
-            self._history.append(self.centre)
-        self.centre = node
-        self._select_default()
-        self._redraw()
-
-    def action_side(self, side: str) -> None:
-        if self._neighbours(side):
-            self._side, self._index = side, min(self._index, len(self._neighbours(side)) - 1)
+    def action_move(self, dy: int, dx: int) -> None:
+        if self._drawing is not None and self.selected is not None:
+            self.selected = neighbour(self._drawing.boxes, self.selected, dy, dx)
             self._redraw()
 
-    def action_toggle_side(self) -> None:
-        self.action_side("in" if self._side == "out" else "out")
-
-    def action_move(self, delta: int) -> None:
-        count = len(self._neighbours(self._side))
-        if count:
-            self._index = min(max(self._index + delta, 0), count - 1)
-            self._redraw()
-
-    def action_centre(self) -> None:
-        neighbours = self._neighbours(self._side)
-        if self._index < len(neighbours):
-            self._go(neighbours[self._index].node)
-
-    def action_back(self) -> None:
-        if self._history:
-            self.centre = self._history.pop()
-            self._select_default()
+    def action_step(self, step: int) -> None:
+        if self._drawing is not None and self.selected is not None:
+            self.selected = following(self._drawing.boxes, self.selected, step)
             self._redraw()
 
     def action_deeper(self) -> None:
-        graph = self._graph
-        below = graph.children(self.centre) if graph is not None and self.centre is not None else []
-        if below:
-            self._go(graph.most_connected(below))
+        if self.selected is None:
+            return
+        if self.selected.kind == FILE:
+            self.notify("A file has nothing below it: o opens it")
         else:
-            self.notify("Nothing below this")
+            self._go(self._hierarchy.settle(self.selected))
 
     def action_shallower(self) -> None:
-        parent = self._graph.parent(self.centre) if self._graph is not None and self.centre is not None else None
-        if parent is not None:
-            self._go(parent)
-        else:
+        parent = self._hierarchy.parent(self.scope) if self._drawing is not None else None
+        if parent is None:
             self.notify("Already at the top")
+        else:
+            self._go(parent, self._hierarchy.containing(parent, self.scope))
 
     def action_pick(self) -> None:
-        if self._graph is not None and self.centre is not None:
-            self.app.push_screen(Picker(NodeSource(self._graph, self.centre.level)), self._picked)
+        if self._graph is not None and self._drawing is not None:
+            self.app.push_screen(Picker(NodeSource(self._graph)), self._picked)
 
     def _picked(self, choice: Choice | None) -> None:
-        node = Node(self.centre.level, choice.key) if choice is not None and self.centre is not None else None
-        if node is not None and self._graph is not None and self._graph.has(node):
-            self._go(node)
+        if choice is None or self._graph is None:
+            return
+        level, _, key = choice.key.partition(":")
+        if self._graph.has(node := Node(level, key)):
+            self._go(*self._hierarchy.locate(node))
+
+    def _paths(self) -> list[str]:
+        return self._hierarchy.paths_of(self.selected) if self._drawing is not None and self.selected is not None else []
 
     def action_open(self) -> None:
-        paths = self._graph.paths_of(self.centre) if self._graph is not None and self.centre is not None else []
+        paths = self._paths()
         if not paths:
             self.notify("Nothing to open here")
         elif len(paths) == 1:
-            self.dismiss(Location(paths[0], self._graph.line_of(self.centre)))
+            self.dismiss(Location(paths[0]))
         else:
             self.app.push_screen(Picker(FilePickerSource(self._root, PathMatcher(paths), lambda: [])), self._opened)
 
@@ -231,24 +223,28 @@ class GraphScreen(Screen[Location | None]):
             self.dismiss(Location(choice.key, choice.line))
 
     def action_cycle(self) -> None:
-        cyclic = self._graph.cyclic_nodes(self.centre.level) if self._graph is not None and self.centre is not None else []
-        if not cyclic:
-            self.notify("No cycles at this level")
+        members = sorted(self._cycles)
+        if not members:
+            self.notify("No cycles in this view")
             return
-        later = [node for node in cyclic if node > self.centre]
-        self._go((later or cyclic)[0])
+        later = [member for member in members if self.selected is None or member > self.selected]
+        self.selected = (later or members)[0]
+        self._redraw()
 
     def on_graph_view_clicked(self, message: GraphView.Clicked) -> None:
         message.stop()
-        self._side, self._index = message.side, message.index
-        self.action_centre()
+        if message.node == self.selected:
+            self.action_deeper()
+        else:
+            self.selected = message.node
+            self._redraw()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         return self._explain is not None if action == "about" else True
 
     def action_about(self) -> None:
-        if self._explain is not None and self.centre is not None:
-            self._explain(self.centre)
+        if self._explain is not None and self.selected is not None:
+            self._explain(self.selected, tuple(self._paths()))
 
     def action_close(self) -> None:
         self.dismiss(None)
