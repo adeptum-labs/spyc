@@ -18,6 +18,7 @@
 # Contact: info@adeptum.se
 
 
+from textual.app import RenderResult
 from textual.events import MouseDown, MouseMove, MouseUp
 from textual.message import Message
 from textual.widget import Widget
@@ -30,6 +31,9 @@ class Splitter(Widget):
         def __init__(self, x: int) -> None:
             super().__init__()
             self.x = x
+
+    def render(self) -> RenderResult:
+        return ""
 
     def on_mouse_down(self, event: MouseDown) -> None:
         self.capture_mouse()

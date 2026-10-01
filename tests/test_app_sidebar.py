@@ -19,6 +19,7 @@
 
 
 from test_app import SIZE, make_app, ready
+from textual.geometry import Region
 
 from spyc.app import MIN_MAIN_WIDTH, MIN_SIDEBAR_WIDTH, SIDEBAR_STEP, SIDEBAR_WIDTH, SpycApp
 from spyc.state import StateStore
@@ -67,6 +68,14 @@ async def test_dragging_the_splitter_resizes_the_sidebar(project, tmp_path):
         await pilot.hover(Splitter, offset=(20, 0))
         await pilot.mouse_up(Splitter)
         assert tree_width(app) == SIDEBAR_WIDTH + 20
+
+
+async def test_the_splitter_draws_no_text(project, tmp_path):
+    app = make_app(project, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        splitter = app.query_one(Splitter)
+        assert not any(strip.text.strip() for strip in splitter.render_lines(Region(0, 0, 1, splitter.size.height)))
 
 
 async def test_a_splitter_not_pressed_does_not_resize_the_sidebar(project, tmp_path):
