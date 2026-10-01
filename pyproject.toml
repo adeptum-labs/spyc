@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spyc"
-version = "0.1.0"
+version = "0.1.1.dev0"
 description = "Terminal viewer for browsing code bases: syntax colors, git history and coverage"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
