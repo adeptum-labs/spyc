@@ -22,7 +22,6 @@ import posixpath
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
-from itertools import islice
 
 from spyc.deps.facts import FileFacts, Import
 from spyc.deps.golang import GoModules
@@ -31,9 +30,9 @@ from spyc.deps.javascript import ScriptModules
 from spyc.deps.python import PythonModules
 from spyc.deps.rust import RustCrates
 
-UNIT, FILE, CLASS = "unit", "file", "class"
-LEVELS = (UNIT, FILE, CLASS)
-KIND_NAMES = {FILE: "file", CLASS: "class"}
+UNIT, FILE = "unit", "file"
+LEVELS = (UNIT, FILE)
+KIND_NAMES = {FILE: "file"}
 JVM = frozenset({"", "java", "kotlin"})
 SCRIPTS = frozenset({"javascript", "typescript", "tsx"})
 C_FAMILY = frozenset({"c", "cpp"})
@@ -41,9 +40,6 @@ C_FAMILY = frozenset({"c", "cpp"})
 MANIFESTS = frozenset({"gomod", "cargo"})
 DEFAULT_UNIT = "(default)"
 EXTERNAL_SEGMENTS = 2
-# Every top-level class of a file gets every target of the file, which is the product of two
-# counts that a generated or hostile file can make huge.
-MAX_CLASS_EDGES_PER_FILE = 20_000
 
 
 # The caller asked for the build to stop, for instance because the app is being left.
@@ -69,10 +65,6 @@ class Link:
 
 Edges = dict[Node, dict[Node, int]]
 Target = tuple[str, str, str]
-
-
-def _class_key(unit: str, name: str) -> str:
-    return f"{unit}.{name}" if unit else name
 
 
 def _external_name(path: str) -> str:
@@ -225,8 +217,8 @@ def _follow(imported: Import, project: _Definitions, reach: _Reach, wildcards: s
         reach.external[_external_name(imported.path)] += 1
 
 
-# Who depends on whom, at three levels: unit (a package, or a directory), file and
-# class. Built once and never changed, so another thread may read it.
+# Who depends on whom, at two levels: unit (a package, or a directory) and file.
+# Built once and never changed, so another thread may read it.
 class DependencyGraph:
     def __init__(self, files: Mapping[str, FileFacts], stop: Callable[[], bool] = lambda: False) -> None:
         self._files = {path: facts for path, facts in files.items() if facts.language not in MANIFESTS}
@@ -235,7 +227,6 @@ class DependencyGraph:
         self._external: dict[Node, Counter] = defaultdict(Counter)
         self._children: dict[Node, list[Node]] = defaultdict(list)
         self._parent: dict[Node, Node] = {}
-        self._line: dict[Node, int] = {}
         self._components: dict[str, dict[Node, frozenset[Node]]] = {}
         self._directory_units: set[str] = set()
         project = _Project(dict(files))
@@ -246,7 +237,7 @@ class DependencyGraph:
                 raise Stopped
             self._add_dependencies(path, facts, _reach(path, facts, project))
         for level in LEVELS:
-            self._components[level] = _components(self._out[level], self.nodes(level))
+            self._components[level] = components(self._out[level], self.nodes(level))
 
     def _add_structure(self, path: str, facts: FileFacts) -> None:
         unit, file = Node(UNIT, unit_key(path, facts)), Node(FILE, path)
@@ -254,11 +245,6 @@ class DependencyGraph:
         self._parent[file] = unit
         if facts.language not in JVM:
             self._directory_units.add(unit.key)
-        for definition in facts.classes:
-            node = Node(CLASS, _class_key(facts.unit, definition.name))
-            self._children[file].append(node)
-            self._parent[node] = file
-            self._line[node] = definition.line
 
     def _add_dependencies(self, path: str, facts: FileFacts, reach: _Reach) -> None:
         own_unit = unit_key(path, facts)
@@ -270,9 +256,6 @@ class DependencyGraph:
                 self._link(UNIT, unit, Node(UNIT, target_unit), max(files_in_unit[target_unit], 1))
         for target_path, count in Counter(found for found, _, _ in reach.targets).items():
             self._link(FILE, file, Node(FILE, target_path), count)
-        pairs = ((own, target) for own in facts.classes for target in sorted(reach.targets))
-        for own, (_, target_unit, name) in islice(pairs, MAX_CLASS_EDGES_PER_FILE):
-            self._link(CLASS, Node(CLASS, _class_key(facts.unit, own.name)), Node(CLASS, _class_key(target_unit, name)), 1)
         for name, count in reach.external.items():
             self._external[file][name] += count
             if not _is_go_test(path, facts):
@@ -286,7 +269,7 @@ class DependencyGraph:
     def empty(self) -> bool:
         return not self._files
 
-    # What to call a node: a package (Java, Kotlin) or a directory (the other languages), a file or a class.
+    # What to call a node: a package (Java, Kotlin) or a directory (the other languages), or a file.
     def kind_of(self, node: Node) -> str:
         if node.level != UNIT:
             return KIND_NAMES[node.level]
@@ -298,9 +281,7 @@ class DependencyGraph:
     def nodes(self, level: str) -> list[Node]:
         if level == UNIT:
             return sorted(node for node in self._children if node.level == UNIT)
-        if level == FILE:
-            return sorted(Node(FILE, path) for path in self._files)
-        return sorted(node for node in self._parent if node.level == CLASS)
+        return sorted(Node(FILE, path) for path in self._files)
 
     def outgoing(self, node: Node) -> list[Link]:
         return _links(self._out[node.level].get(node, {}))
@@ -320,11 +301,7 @@ class DependencyGraph:
     def paths_of(self, node: Node) -> list[str]:
         if node.level == UNIT:
             return [child.key for child in self._children.get(node, [])]
-        file = node if node.level == FILE else self._parent.get(node)
-        return [file.key] if file is not None else []
-
-    def line_of(self, node: Node) -> int | None:
-        return self._line.get(node)
+        return [node.key]
 
     def unit_of(self, path: str) -> Node | None:
         return self._parent.get(Node(FILE, path))
@@ -352,7 +329,7 @@ def _links(edges: Mapping[Node, int]) -> list[Link]:
 
 # Tarjan's algorithm with a stack of its own, since a chain of thousands of files
 # would overflow the recursion limit.
-def _components(edges: Mapping[Node, Mapping[Node, int]], nodes: Iterable[Node]) -> dict[Node, frozenset[Node]]:
+def components(edges: Mapping[Node, Mapping[Node, int]], nodes: Iterable[Node]) -> dict[Node, frozenset[Node]]:
     index: dict[Node, int] = {}
     low: dict[Node, int] = {}
     stack: list[Node] = []

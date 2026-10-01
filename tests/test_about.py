@@ -25,7 +25,7 @@ from spyc.about import MAX_FACTS, About
 from spyc.assist.targets import Target
 from spyc.core.document import load_document
 from spyc.core.file_index import build_index
-from spyc.deps.graph import CLASS, FILE, UNIT, DependencyGraph, Node
+from spyc.deps.graph import FILE, UNIT, DependencyGraph, Node
 from spyc.symbol_index import SymbolIndex
 
 FILES = {
@@ -100,7 +100,6 @@ def test_nodes_of_the_graph_become_targets(about):
     assert about.node(Node(UNIT, "com.acme.a")) == Target("package", "com.acme.a", "com.acme.a", ("src/a/A.java",))
     assert about.node(Node(UNIT, "tools")).kind == "directory" and about.node(Node(UNIT, "tools")) == about.directory("tools")
     assert about.node(Node(FILE, "tools/one.py")) == Target("file", "tools/one.py", "tools/one.py", ("tools/one.py",))
-    assert about.node(Node(CLASS, "com.acme.a.A")) == Target("class", "src/a/A.java:A", "A", ("src/a/A.java",), 3)
 
 
 def test_a_node_the_graph_does_not_have_is_no_target(about):

@@ -21,7 +21,7 @@
 import time
 
 from spyc.deps.facts import ClassDef, FileFacts, Import
-from spyc.deps.graph import CLASS, FILE, UNIT, DependencyGraph, Node
+from spyc.deps.graph import FILE, UNIT, DependencyGraph, Node
 
 
 def facts(unit, classes, imports=(), used=()):
@@ -56,11 +56,9 @@ def test_units_depend_on_units_and_a_wildcard_import_gives_class_edges_only_for_
     assert names(graph.outgoing(MODEL)) == [] and names(graph.incoming(MODEL)) == [("com.acme.order", 2)]
 
 
-def test_files_and_classes_depend_on_the_ones_they_import_or_use_from_their_package():
+def test_files_depend_on_the_ones_they_import_or_use_from_their_package():
     graph = DependencyGraph(SAMPLE)
     assert names(graph.outgoing(Node(FILE, SERVICE))) == [("Money.java", 1), ("Order.java", 1), ("Repo.java", 1)]
-    assert names(graph.outgoing(Node(CLASS, "com.acme.order.OrderService"))) == [
-        ("com.acme.model.Money", 1), ("com.acme.model.Order", 1), ("com.acme.order.Repo", 1)]
 
 
 def test_a_class_used_from_the_same_package_is_a_dependency_without_an_import():
@@ -112,7 +110,7 @@ def test_files_without_a_package_share_the_default_unit_and_still_depend_on_each
     graph = DependencyGraph(files)
     assert Node(UNIT, "").name == "(default)"
     assert names(graph.outgoing(Node(FILE, "m/Main.java"))) == [("Helper.java", 1)]
-    assert [node.key for node in graph.nodes(CLASS)] == ["Helper", "Main"] and graph.outgoing(Node(UNIT, "")) == []
+    assert graph.outgoing(Node(UNIT, "")) == []
 
 
 def test_two_files_that_define_the_same_class_do_not_break_the_graph_and_the_first_path_wins():
@@ -125,11 +123,11 @@ def test_the_shape_of_the_project_can_be_walked_up_and_down():
     graph = DependencyGraph(SAMPLE)
     assert [child.key.rsplit("/", 1)[-1] for child in graph.children(ORDER)] == [
         "OrderService.java", "Repo.java", "OrderServiceTest.java"]
-    service, klass = Node(FILE, SERVICE), Node(CLASS, "com.acme.order.OrderService")
-    assert graph.parent(service) == ORDER and graph.parent(klass) == service and graph.parent(ORDER) is None
-    assert graph.children(service) == [klass] and graph.unit_of(SERVICE) == ORDER and graph.unit_of("nope") is None
-    assert graph.paths_of(klass) == [SERVICE] and len(graph.paths_of(ORDER)) == 3 and graph.line_of(klass) == 1
-    assert graph.has(ORDER) and graph.has(klass) and not graph.has(Node(UNIT, "nope"))
+    service = Node(FILE, SERVICE)
+    assert graph.parent(service) == ORDER and graph.parent(ORDER) is None
+    assert graph.children(service) == [] and graph.unit_of(SERVICE) == ORDER and graph.unit_of("nope") is None
+    assert graph.paths_of(service) == [SERVICE] and len(graph.paths_of(ORDER)) == 3
+    assert graph.has(ORDER) and graph.has(service) and not graph.has(Node(UNIT, "nope"))
 
 
 def test_the_most_connected_node_wins_and_ties_go_to_the_name():
@@ -162,20 +160,10 @@ def test_finding_the_nodes_of_a_cycle_of_thousands_of_files_is_fast():
     assert time.perf_counter() - started < 2
 
 
-def test_a_file_with_thousands_of_classes_and_imports_cannot_blow_up_the_class_edges():
-    from spyc.deps.graph import MAX_CLASS_EDGES_PER_FILE
-    files = {"b/Big.java": facts("b", [f"T{index}" for index in range(1000)]),
-             "h/Hostile.java": facts("h", [f"H{index}" for index in range(1000)], [Import(f"b.T{index}") for index in range(1000)])}
-    started = time.perf_counter()
-    graph = DependencyGraph(files)
-    edges = sum(len(graph.outgoing(node)) for node in graph.nodes(CLASS))
-    assert edges <= MAX_CLASS_EDGES_PER_FILE and time.perf_counter() - started < 3
-
-
-def test_two_files_that_declare_the_same_class_have_no_edge_between_the_copies_or_from_a_class_to_itself():
+def test_two_files_that_declare_the_same_class_have_no_edge_between_the_copies():
     files = {"m1/Foo.java": facts("com.acme", ["Foo"]), "m2/Foo.java": facts("com.acme", ["Foo"], [Import("com.acme.Foo")], ["Foo"])}
     graph = DependencyGraph(files)
-    assert graph.outgoing(Node(FILE, "m2/Foo.java")) == [] and graph.outgoing(Node(CLASS, "com.acme.Foo")) == []
+    assert graph.outgoing(Node(FILE, "m2/Foo.java")) == []
     assert graph.outgoing(Node(UNIT, "com.acme")) == []
 
 
@@ -220,9 +208,9 @@ def test_python_cycles_between_files_are_found_and_the_directory_has_none_with_i
     assert graph.outgoing(Node(UNIT, "pkg")) == []
 
 
-def test_python_has_no_classes_so_the_file_is_the_lowest_level_and_the_nodes_are_called_directories():
+def test_the_file_is_the_lowest_level_and_python_nodes_are_called_directories():
     graph = DependencyGraph(PYTHON_PROJECT)
-    assert graph.nodes(CLASS) == [] and graph.children(Node(FILE, "app.py")) == []
+    assert graph.children(Node(FILE, "app.py")) == []
     assert [graph.kind_of(node) for node in (Node(UNIT, "pkg"), Node(FILE, "app.py"))] == ["directory", "file"]
 
 

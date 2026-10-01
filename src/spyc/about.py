@@ -74,10 +74,7 @@ class About:
             if kind == "directory":
                 return self.directory(node.key)
             return Target("package", node.key, node.name, tuple(sorted(graph.paths_of(node))))
-        paths = graph.paths_of(node)
-        if node.level == FILE:
-            return self.file(node.key)
-        return self.class_named(paths[0], node.name.rsplit(".", 1)[-1], graph.line_of(node) or 1) if paths else None
+        return self.file(node.key)
 
     def facts_of(self, target: Target) -> Facts:
         definitions = self._definitions(target)
@@ -89,6 +86,7 @@ class About:
                      external=tuple(f"{name} ×{count}" for name, count in graph.externals(node)[:MAX_FACTS]),
                      cycles=tuple(sorted(member.name for member in graph.cycle_members(node)))[:MAX_FACTS], definitions=definitions)
 
+    # A class has no node of its own: what is known of its file is what is told of it.
     @staticmethod
     def _graph_node(graph: DependencyGraph, target: Target) -> Node | None:
         match target.kind:
@@ -97,8 +95,7 @@ class About:
             case "file":
                 node = Node(FILE, target.key)
             case _:
-                file = Node(FILE, target.paths[0])
-                node = next((child for child in graph.children(file) if child.name.rsplit(".", 1)[-1] == target.label), None)
+                node = Node(FILE, target.paths[0])
         return node if node is not None and graph.has(node) else None
 
     # A directory or a package is told by its classes; a file or a class by everything it defines.
