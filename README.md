@@ -66,7 +66,7 @@ the build systems and the key files, such as the README, the build files, the CI
 | `g` | All uncommitted changes, staged or not, and new files, as one diff |
 | `b` | Show who last changed each line; `Enter` on a line opens that commit |
 | `c` | Show or hide what the tests ran, from the coverage reports |
-| `G` | Dependency graph: what the package, file or class in the middle depends on and what depends on it; `Enter` moves along an edge, `[` and `]` go a level up or down, `c` finds cycles, `o` opens the code |
+| `G` | Dependency graph: the packages of one level as layered boxes, what depends on what above what it depends on, with a count on each line; arrow keys or `Tab` select, `Enter` goes into a box, `Backspace` out of it, `/` finds, `c` finds cycles, `o` opens the code |
 | `a` | Ask Claude to describe the directory, package, file or class; only when `claude` is installed and logged in |
 | `e` | Edit in `$VISUAL` or `$EDITOR` at the cursor line |
 | `p` | Copy `path:line` to the clipboard |
@@ -95,11 +95,13 @@ commit. The mouse works too: click to place the cursor, scroll to move.
 
 ## Dependencies
 
-`G` draws the dependencies of the project around one node: what depends on it on the left, what it depends on on the right,
-with the number of files behind each edge and `⟲` for a node in a cycle with it. Java and Kotlin are drawn as packages, and
-Python, JavaScript, TypeScript, TSX, Go, Rust, C and C++ as directories; down a level are the files, and for Java and Kotlin
-the classes. What the project does not contain is counted on the node, not drawn. The graph is built in the background
-after the symbols; `G` says `Reading imports` until it is ready, and shows it as soon as it is.
+`G` draws the dependencies of the project as boxes in layers: what depends on something is above it, and a dashed line
+with a number, the files behind it, runs from each box to the ones it depends on. A box is a package or directory with
+everything below it rolled up; `Enter` goes into one and shows its parts, and below the deepest package the boxes are the
+files. A box that is in a cycle is marked in yellow, and what the project does not contain is counted on the box, not
+drawn. Java and Kotlin are drawn as packages, and Python, JavaScript, TypeScript, TSX, Go, Rust, C and C++ as directories.
+The graph is built in the background after the symbols; `G` says `Reading imports` until it is ready, and shows it as soon
+as it is.
 
 How each language is read:
 
@@ -134,7 +136,7 @@ Limits:
 ## Asking Claude
 
 `a` has Claude describe what is selected: in the tree the directory or file under the cursor, in the code a menu of the
-class around the cursor, the file, and its package or directory, and in the dependency graph the node in the middle.
+class around the cursor, the file, and its package or directory, and in the dependency graph the selected box.
 The answer is written into a screen of its own as Claude reads the code; `Escape` stops it and `r` asks again.
 
 The key exists only when spyc found `claude` on the path and `claude auth status` said it is logged in, which is checked

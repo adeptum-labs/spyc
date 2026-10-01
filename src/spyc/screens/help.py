@@ -42,7 +42,7 @@ HELP_ROWS: list[tuple[str, str | None, str]] = [
     ("g", "show_changes", "All uncommitted changes as one diff"),
     ("b", "toggle_blame", "Show who last changed each line; Enter on a line opens that commit"),
     ("c", "toggle_coverage", "Show or hide what the tests ran; reports are found by name or given with --coverage"),
-    ("G", "show_graph", "Dependency graph: packages (Java, Kotlin) or directories, files and classes; [ ] change level, c cycles"),
+    ("G", "show_graph", "Dependency graph: layered boxes of packages (Java, Kotlin) or directories; Enter goes into one, Backspace out, / finds, c cycles"),
     ("a", "about", "Ask Claude to describe the directory, package, file or class; needs claude installed and logged in"),
     ("e", "edit", "Edit in $VISUAL or $EDITOR at the cursor line"),
     ("p", "copy_location", "Copy path:line to the clipboard"),
