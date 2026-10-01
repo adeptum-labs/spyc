@@ -75,18 +75,23 @@ from spyc.widgets.code_view import CodeView
 from spyc.widgets.file_tree import FileTree
 from spyc.widgets.markdown_pane import MarkdownPane
 from spyc.widgets.overview_pane import OverviewPane
+from spyc.widgets.splitter import Splitter
 from spyc.widgets.status_bar import StatusBar
 
 RELOAD_INTERVAL = 2.0
 GIT_INTERVAL = 10.0
 SLOW_GIT_SECONDS = 2.0
+SIDEBAR_WIDTH = 34
+SIDEBAR_STEP = 2
+MIN_SIDEBAR_WIDTH = 12
+MIN_MAIN_WIDTH = 20
 MARKDOWN_LIMIT = 50_000
 # Keys that act on the main view, which is hidden behind the log, the changes
 # and the pickers while those are open.
 MAIN_VIEW_ACTIONS = frozenset({
     "find_file", "search_project", "show_outline", "find_symbol", "go_to_definition", "search_in_file", "goto_line", "history_back", "history_forward", "show_log", "show_file_log",
     "show_changes", "toggle_blame", "toggle_coverage", "show_graph", "edit", "copy_location", "overview", "toggle_sidebar", "toggle_ignored",
-    "toggle_markdown", "refresh_project", "about"})
+    "toggle_markdown", "refresh_project", "about", "widen_sidebar", "narrow_sidebar"})
 
 
 def _nearness(candidate: Located, current: str) -> tuple:
@@ -98,7 +103,7 @@ def _nearness(candidate: Located, current: str) -> tuple:
 class SpycApp(App):
     TITLE = "spyc"
     CSS = """
-    #tree { width: 34; border-right: solid $primary; }
+    #tree { width: 34; }
     #main { width: 1fr; }
     #overview, #code { height: 1fr; }
     """
@@ -125,6 +130,8 @@ class SpycApp(App):
         Binding("p", "copy_location", "Copy path", show=False),
         Binding("i", "overview", "Info", show=False),
         Binding("backslash", "toggle_sidebar", "Sidebar", show=False),
+        Binding("greater_than_sign", "widen_sidebar", "Widen sidebar", show=False),
+        Binding("less_than_sign", "narrow_sidebar", "Narrow sidebar", show=False),
         Binding("full_stop", "toggle_ignored", "Ignored", show=False),
         Binding("r", "toggle_markdown", "Rendered", show=False),
         Binding("R", "refresh_project", "Refresh", show=False),
@@ -141,6 +148,7 @@ class SpycApp(App):
         self._graph: DependencyGraph | None = None
         self._graph_failure: str | None = None
         self._coverage_shown = bool(self.store.get("coverage", True))
+        self._sidebar_width = int(self.store.get("sidebar_width", SIDEBAR_WIDTH))
         self.history = JumpHistory()
         self.overview: Overview | None = None
         self.git = Git(project_root)
@@ -170,6 +178,7 @@ class SpycApp(App):
         yield Header()
         with Horizontal():
             yield FileTree(id="tree")
+            yield Splitter(id="splitter")
             with Vertical(id="main"):
                 yield OverviewPane(id="overview")
                 yield CodeView(id="code")
@@ -208,7 +217,8 @@ class SpycApp(App):
         self.sub_title = printable(str(self.project_root))
         self._code.display = False
         self._rendered.display = False
-        self._tree.display = bool(self.store.get("sidebar", True))
+        self._show_sidebar(bool(self.store.get("sidebar", True)))
+        self._apply_sidebar_width()
         self.set_interval(RELOAD_INTERVAL, self._check_for_changes)
         self.set_interval(GIT_INTERVAL, self._poll_git)
         self._reload_index()
@@ -791,9 +801,37 @@ class SpycApp(App):
         self._tree.focus()
 
     def action_toggle_sidebar(self) -> None:
-        tree = self._tree
-        tree.display = not tree.display
-        self.store.set("sidebar", tree.display)
+        self._show_sidebar(not self._tree.display)
+        self.store.set("sidebar", self._tree.display)
+
+    def action_widen_sidebar(self) -> None:
+        self._resize_sidebar(self._sidebar_width + SIDEBAR_STEP)
+
+    def action_narrow_sidebar(self) -> None:
+        self._resize_sidebar(self._sidebar_width - SIDEBAR_STEP)
+
+    def on_splitter_moved(self, message: Splitter.Moved) -> None:
+        self._resize_sidebar(message.x)
+
+    def on_resize(self) -> None:
+        self._apply_sidebar_width()
+
+    def _show_sidebar(self, shown: bool) -> None:
+        self._tree.display = self.screen_stack[0].query_one(Splitter).display = shown
+
+    def _resize_sidebar(self, width: int) -> None:
+        self._sidebar_width = self._fit_sidebar_width(width)
+        self._apply_sidebar_width()
+        self.store.set("sidebar_width", self._sidebar_width)
+
+    # The preferred width is kept as it is when the terminal is too narrow for it, so it comes back when the
+    # terminal grows again.
+    def _apply_sidebar_width(self) -> None:
+        self._tree.styles.width = self._fit_sidebar_width(self._sidebar_width)
+
+    def _fit_sidebar_width(self, width: int) -> int:
+        widest = max(MIN_SIDEBAR_WIDTH, self.size.width - MIN_MAIN_WIDTH - 1)
+        return min(max(width, MIN_SIDEBAR_WIDTH), widest)
 
     def action_toggle_ignored(self) -> None:
         self._show_ignored = not self._show_ignored

@@ -48,6 +48,8 @@ HELP_ROWS: list[tuple[str, str | None, str]] = [
     ("p", "copy_location", "Copy path:line to the clipboard"),
     ("i", "overview", "Project overview"),
     ("\\", "toggle_sidebar", "Show or hide the file tree"),
+    (">", "widen_sidebar", "Widen the file tree; dragging the line beside it with the mouse resizes it too"),
+    ("<", "narrow_sidebar", "Narrow the file tree"),
     (".", "toggle_ignored", "Show or hide files that git ignores"),
     ("R", "refresh_project", "Read the file list again"),
     ("r", "toggle_markdown", "Rendered or source view of a Markdown file"),

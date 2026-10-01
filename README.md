@@ -72,6 +72,7 @@ the build systems and the key files, such as the README, the build files, the CI
 | `p` | Copy `path:line` to the clipboard |
 | `i` | Project overview |
 | `\` | Show or hide the file tree |
+| `>` `<` | Widen or narrow the file tree; dragging the line beside it with the mouse resizes it too, and the width is remembered |
 | `.` | Show or hide files that git ignores |
 | `R` | Read the file list again |
 | `r` | Rendered or source view of a Markdown file |
