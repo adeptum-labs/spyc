@@ -131,6 +131,13 @@ def test_directories_are_a_tree_too_and_the_files_of_the_top_directory_are_a_box
     assert hierarchy.parent(pkg) == ROOT and hierarchy.externals(top) == [("requests", 1)]
 
 
+def test_going_up_from_the_files_at_the_top_goes_to_the_root_and_not_to_a_root_of_one_kind():
+    hierarchy = Hierarchy(DependencyGraph(PYTHON_PROJECT))
+    assert hierarchy.parent(Member(DIRECTORY, (), own=True)) == ROOT
+    mixed = Hierarchy(DependencyGraph({**PYTHON_PROJECT, "A.java": java("", ["A"]), "b/B.java": java("b", ["B"])}))
+    assert mixed.parent(Member(PACKAGE, (), own=True)) == ROOT
+
+
 def test_titles_name_the_scope_and_say_when_it_is_the_files_of_one():
     assert title_of(WEB_SCOPE, "proj") == "org.web" and title_of(ROOT, "proj") == "proj"
     assert title_of(OWN, "proj") == "org.web (files)"

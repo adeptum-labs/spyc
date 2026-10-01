@@ -22,43 +22,71 @@ from collections.abc import Hashable
 
 from rich.text import Text
 
+from spyc.core.printable import printable
 from spyc.deps.layout import Box, Cell, Drawing
 
 SELECTED, LIVE, CYCLE, LIVE_CYCLE, DIM = "reverse bold", "bold cyan", "yellow", "bold yellow", "dim"
 DENSE_BOXES = 60
+CACHED_PAINTS_PER_ROW = 20
 EXTERNALS_SHOWN = 3
 
 
 def paint(drawing: Drawing, selected: Hashable | None) -> list[Text]:
-    live = {number for number, wire in enumerate(drawing.wires) if selected in (wire.source, wire.target)}
-    return [_line(row, drawing, selected, live) for row in drawing.rows]
+    return Painter(drawing).paint(selected)
 
 
-def _style(cell: Cell, drawing: Drawing, selected: Hashable | None, live: set[int]) -> str:
-    if cell.node is not None:
-        return SELECTED if cell.node == selected else ""
-    if not cell.wires:
-        return ""
-    cyclic = any(drawing.wires[wire].cyclic for wire in cell.wires)
-    if not live:
-        return CYCLE if cyclic else ""
-    if any(wire in live for wire in cell.wires):
-        return LIVE_CYCLE if cyclic else LIVE
-    return DIM
+# Paints a drawing again and again as the selection moves. A row looks the same as before when the same wires of it
+# are live and the same box of it is selected, so only the rows a move changes are painted.
+class Painter:
+    def __init__(self, drawing: Drawing) -> None:
+        self._drawing = drawing
+        self._runs = [_runs_of(row) for row in drawing.rows]
+        self._rows = [(frozenset(wire for _, _, wires in runs for wire in wires),
+                       frozenset(node for _, node, _ in runs if node is not None)) for runs in self._runs]
+        self._lines: dict[tuple, Text] = {}
+
+    def paint(self, selected: Hashable | None) -> list[Text]:
+        wires = self._drawing.wires
+        live = frozenset(number for number, wire in enumerate(wires) if selected in (wire.source, wire.target))
+        if len(self._lines) > CACHED_PAINTS_PER_ROW * len(self._rows):
+            self._lines.clear()
+        lines = []
+        for y, (in_row, nodes) in enumerate(self._rows):
+            key = (y, in_row & live, selected if selected in nodes else None, bool(live))
+            if key not in self._lines:
+                self._lines[key] = self._line(y, selected, live)
+            lines.append(self._lines[key])
+        return lines
+
+    def _line(self, y: int, selected: Hashable | None, live: frozenset[int]) -> Text:
+        line = Text(no_wrap=True)
+        for text, node, wires in self._runs[y]:
+            line.append(text, style=self._style(node, wires, selected, live))
+        return line
+
+    def _style(self, node: Hashable | None, wires: tuple[int, ...], selected: Hashable | None, live: frozenset[int]) -> str:
+        if node is not None:
+            return SELECTED if node == selected else ""
+        if not wires:
+            return ""
+        cyclic = any(self._drawing.wires[wire].cyclic for wire in wires)
+        if not live:
+            return CYCLE if cyclic else ""
+        if any(wire in live for wire in wires):
+            return LIVE_CYCLE if cyclic else LIVE
+        return DIM
 
 
-# Cells of one style are appended together, as a drawing has thousands of them.
-def _line(row: list[Cell], drawing: Drawing, selected: Hashable | None, live: set[int]) -> Text:
-    line, run, style = Text(no_wrap=True), [], ""
+# A drawing is mostly empty or made of long runs of one box or wire, so a row is kept as the runs of cells that
+# belong together, and not as thousands of cells.
+def _runs_of(row: list[Cell]) -> list[tuple[str, Hashable | None, tuple[int, ...]]]:
+    runs: list[list] = []
     for cell in row:
-        found = _style(cell, drawing, selected, live)
-        if found != style and run:
-            line.append("".join(run), style=style)
-            run = []
-        style = found
-        run.append(cell.char)
-    line.append("".join(run), style=style)
-    return line
+        if runs and runs[-1][1] == cell.node and runs[-1][2] == cell.wires:
+            runs[-1][0].append(cell.char)
+        else:
+            runs.append([[cell.char], cell.node, cell.wires])
+    return [("".join(chars), node, wires) for chars, node, wires in runs]
 
 
 def neighbour(boxes: list[Box], current: Hashable, dy: int, dx: int) -> Hashable:
@@ -89,7 +117,7 @@ def status_text(kind: str, name: str, outgoing: int, incoming: int, externals: l
                 dense: bool) -> Text:
     parts = [f"{kind} {name}", f"{outgoing} out", f"{incoming} in"]
     if externals:
-        shown = ", ".join(external for external, _ in externals[:EXTERNALS_SHOWN])
+        shown = ", ".join(printable(external) for external, _ in externals[:EXTERNALS_SHOWN])
         parts.append(f"{len(externals)} external ({shown}{', ...' if len(externals) > EXTERNALS_SHOWN else ''})")
     if cycle:
         parts.append(f"⟲ cycle with {cycle - 1}")

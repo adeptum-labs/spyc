@@ -116,6 +116,29 @@ def test_graphs_of_any_shape_are_drawn_whole():
         assert len(drawing.wires) == sum(len(targets) for targets in edges.values())
 
 
+def shared_lines(drawing):
+    return [(y, x) for y, row in enumerate(drawing.rows) for x, cell in enumerate(row) if cell.char == "┆" and len(cell.wires) > 1]
+
+
+def test_two_wires_never_share_a_vertical_line():
+    nodes = [f"n{index}" for index in range(6)]
+    drawing = draw({"n0": {"n1": 2, "n4": 1}, "n2": {"n4": 1}}, nodes)
+    assert shared_lines(drawing) == []
+    generator = random.Random(7)
+    for _ in range(400):
+        names = [f"n{index}" for index in range(generator.randint(2, 7))]
+        edges = {a: {b: generator.randint(1, 9) for b in names if b != a and generator.random() < 0.3} for a in names}
+        assert shared_lines(layout(names, edges, _groups(names, edges), {n: n for n in names}, "r")) == []
+
+
+def test_wide_characters_and_marks_that_take_no_room_keep_every_row_the_same_width_in_cells():
+    from rich.cells import cell_len
+    drawing = draw({"数据库服务": {"éx": 3}, "éx": {}}, title="数据")
+    assert len({cell_len("".join(cell.char for cell in row)) for row in drawing.rows}) == 1
+    assert len({len(row) for row in drawing.rows}) == 1
+    assert [cell_len(box_text(drawing, box)) for box in drawing.boxes] == [box.width for box in drawing.boxes]
+
+
 def _groups(nodes, edges):
     reach = {a: set(edges[a]) for a in nodes}
     for _ in nodes:

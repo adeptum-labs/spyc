@@ -18,7 +18,7 @@
 # Contact: info@adeptum.se
 
 
-from spyc.deps.diagram import DENSE_BOXES, following, neighbour, paint, status_text
+from spyc.deps.diagram import DENSE_BOXES, Painter, following, neighbour, paint, status_text
 from spyc.deps.layout import layout
 
 NODES = ["top", "left", "right", "low"]
@@ -50,6 +50,18 @@ def test_the_wires_of_a_cycle_are_yellow():
     assert "yellow" in styles(drawing, None) and "bold yellow" in styles(drawing, "a")
 
 
+def test_a_painter_gives_the_same_lines_as_painting_and_does_not_paint_a_row_again_that_did_not_change():
+    painter = Painter(DRAWING)
+    first = painter.paint("left")
+    assert [line.plain for line in first] == [line.plain for line in paint(DRAWING, "left")]
+    assert [line.spans for line in first] == [line.spans for line in paint(DRAWING, "left")]
+    again = painter.paint("left")
+    assert all(a is b for a, b in zip(first, again))
+    moved = painter.paint("right")
+    assert [line.spans for line in moved] == [line.spans for line in paint(DRAWING, "right")]
+    assert sum(a is b for a, b in zip(first, moved)) > 0
+
+
 def test_the_arrows_move_to_the_nearest_box_in_that_direction():
     assert neighbour(DRAWING.boxes, "top", 1, 0) in {"left", "right"}
     assert neighbour(DRAWING.boxes, "left", -1, 0) == "top" and neighbour(DRAWING.boxes, "left", 1, 0) == "low"
@@ -73,6 +85,11 @@ def test_the_status_line_names_the_selection_its_wires_what_is_outside_and_its_c
     text = status_text("package", "com.acme.order", 2, 1, [("java.util", 3), ("a", 2), ("b", 1), ("c", 1)], 3, False)
     assert text.plain == "package com.acme.order · 2 out · 1 in · 4 external (java.util, a, b, ...) · ⟲ cycle with 2"
     assert status_text("file", "A.java", 0, 0, [], 0, False).plain == "file A.java · 0 out · 0 in"
+
+
+def test_a_name_from_outside_the_project_cannot_send_control_characters_to_the_terminal():
+    text = status_text("file", "a.js", 0, 0, [("evil\x1b]52;c;ZXZpbA==\x07", 1)], 0, False)
+    assert "\x1b" not in text.plain and "\x07" not in text.plain
 
 
 def test_the_status_line_says_when_there_are_too_many_boxes_to_read_at_once():

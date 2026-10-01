@@ -32,7 +32,7 @@ from spyc.core.fuzzy import PathMatcher
 from spyc.core.location import Location
 from spyc.core.picking import Choice
 from spyc.core.printable import printable
-from spyc.deps.diagram import DENSE_BOXES, following, neighbour, paint, status_text
+from spyc.deps.diagram import DENSE_BOXES, Painter, following, neighbour, status_text
 from spyc.deps.graph import FILE, DependencyGraph, Node
 from spyc.deps.layout import Drawing, layout
 from spyc.deps.picker import NodeSource
@@ -75,6 +75,7 @@ class GraphScreen(Screen[Location | None]):
         self._failure, self._explain = failure, explain
         self._hierarchy: Hierarchy | None = None
         self._drawing: Drawing | None = None
+        self._painter: Painter | None = None
         self._edges: dict = {}
         self._cycles: dict = {}
         self.scope: Member = ROOT
@@ -130,6 +131,7 @@ class GraphScreen(Screen[Location | None]):
         self._cycles = self._hierarchy.cycles(self._edges, members)
         labels = {member: printable(label_of(member, scope)) for member in members}
         self._drawing = layout(members, self._edges, self._cycles, labels, printable(title_of(scope, self._root.resolve().name)))
+        self._painter = Painter(self._drawing)
         self.scope = scope
         self.selected = selected if selected in members else min(members, key=self._busyness, default=None)
 
@@ -148,7 +150,7 @@ class GraphScreen(Screen[Location | None]):
             header.update(Text(""))
             view.show([Text(self._message())], [])
             return
-        view.show(paint(drawing, self.selected), drawing.boxes)
+        view.show(self._painter.paint(self.selected), drawing.boxes)
         header.update(self._status(len(drawing.boxes)))
         if (box := next((box for box in drawing.boxes if box.node == self.selected), None)) is not None:
             view.reveal(box)

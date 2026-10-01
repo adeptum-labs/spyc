@@ -22,6 +22,8 @@ from collections import defaultdict
 from collections.abc import Hashable, Mapping
 from dataclasses import dataclass
 
+from rich.cells import cell_len
+
 SWEEPS = 4
 GAP = 3
 PORT_SPACING = 2
@@ -45,6 +47,26 @@ class Cell:
     char: str = " "
     wires: tuple[int, ...] = ()
     node: Hashable | None = None
+
+
+BLANK = Cell()
+
+
+# One cell for each column the text covers, so that a position in a row is a column on the screen: a wide
+# character is followed by an empty cell, and one that takes no room is joined to the character before it.
+def _cells_of(text: str, node: Hashable | None = None) -> list[Cell]:
+    cells: list[Cell] = []
+    for char in text:
+        width = cell_len(char)
+        if width == 0:
+            index = len(cells) - 1 - (len(cells) > 1 and cells[-1].char == "")
+            if index >= 0:
+                cells[index] = Cell(cells[index].char + char, cells[index].wires, cells[index].node)
+            continue
+        cells.append(Cell(char, (), node))
+        if width == 2:
+            cells.append(Cell("", (), node))
+    return cells
 
 
 # A dependency of `source` on `target`; `cyclic` when both are in one cycle, which is drawn as an arch over the layer.
@@ -145,10 +167,10 @@ def _sign(number: int) -> int:
 
 
 def _frame(rows: list[list[Cell]], title: str) -> list[list[Cell]]:
-    width = max(len(rows[0]) if rows else 0, len(title) + 4)
-    body = [row + [Cell()] * (width - len(row)) for row in rows]
-    head = f"┏ {title} ".ljust(width + 1, "━") + "┓"
-    framed = [[Cell(char) for char in head]]
+    width = max(len(rows[0]) if rows else 0, cell_len(title) + 4)
+    body = [row + [BLANK] * (width - len(row)) for row in rows]
+    top = f"┏ {title} "
+    framed = [[*_cells_of(top), *_cells_of("━" * (width + 1 - cell_len(top))), Cell("┓")]]
     framed += [[Cell("┃"), *row, Cell("┃")] for row in body]
     framed.append([Cell(char) for char in "┗" + "━" * width + "┛"])
     return framed
@@ -182,7 +204,7 @@ def layout(nodes, edges: Mapping, components: Mapping, labels: Mapping, title: s
         slots[hop.upper, "top" if hop.arch else "bottom"].append((index[hop.lower], hop.wire, hop, "upper"))
         slots[hop.lower, "top"].append((index[hop.upper], hop.wire, hop, "lower"))
     widths = {item: 1 if isinstance(item, _Dummy) else
-              max(len(labels[item]) + 4, (max(len(slots[item, "top"]), len(slots[item, "bottom"])) - 1) * PORT_SPACING + 3)
+              max(cell_len(labels[item]) + 4, (max(len(slots[item, "top"]), len(slots[item, "bottom"])) - 1) * PORT_SPACING + 3)
               for row in rows for item in row}
     span = max((sum(widths[item] for item in row) + GAP * (len(row) - 1) for row in rows), default=0)
     x_of = {}
@@ -199,20 +221,39 @@ def layout(nodes, edges: Mapping, components: Mapping, labels: Mapping, title: s
             column[hop, end] = first + PORT_SPACING * position
 
     # Each layer has a channel above it for the wires that end there. A wire runs on a track of its own where it
-    # would otherwise meet another, and a track is as long as the run and its count.
+    # would otherwise meet another, and a track is as long as the run and its count. A wire that leaves a column
+    # runs above one that arrives at the same column, or the two would share the line between their tracks.
     hops_into = defaultdict(list)
     for hop in hops:
         hops_into[level_of[hop.lower]].append(hop)
     track_of, track_count = {}, {}
     for level in range(len(rows)):
-        taken = []
-        for hop in sorted(hops_into[level], key=lambda found: (min(column[found, "upper"], column[found, "lower"]), column[found, "lower"])):
+        arriving = defaultdict(list)
+        for hop in hops_into[level]:
+            for end in ("lower", "upper") if hop.arch else ("lower",):
+                arriving[column[hop, end]].append(hop)
+        runs = sorted(hops_into[level], key=lambda found: (min(column[found, "upper"], column[found, "lower"]), column[found, "lower"]))
+        leaving = {hop: [] if hop.arch else [other for other in arriving[column[hop, "upper"]] if other is not hop] for hop in runs}
+        above = defaultdict(list)
+        for hop, others in leaving.items():
+            for other in others:
+                above[other].append(hop)
+        taken, pending = [], list(runs)
+        while pending:
+            hop = next((found for found in pending if all(found_above in track_of for found_above in above[found])), pending[0])
+            pending.remove(hop)
             low, high = sorted((column[hop, "upper"], column[hop, "lower"]))
             if hop.final:
                 text = str(wires[hop.wire].weight)
                 high = max(high, _label_start(low, high, text) + len(text) - 1)
-            track = next((number for number, end in enumerate(taken) if end < low), len(taken))
-            taken[track:track + 1] = [high]
+            floor = max((track_of[found_above] + 1 for found_above in above[hop] if found_above in track_of), default=0)
+            track = next((number for number in range(floor, len(taken)) if taken[number] < low), None)
+            if track is None:
+                taken += [-1] * (floor - len(taken))
+                track = len(taken)
+                taken.append(high)
+            else:
+                taken[track] = high
             track_of[hop] = track
         track_count[level] = len(taken)
     top_of, y = {}, MARGIN_Y
@@ -257,17 +298,18 @@ def layout(nodes, edges: Mapping, components: Mapping, labels: Mapping, title: s
             continue
         width, top = widths[item], top_of[level_of[item]]
         boxes.append(Box(item, x + MARGIN_X + 1, top + 1, width))
-        label = f" {labels[item]} ".center(width - 2)
-        for row, text in enumerate((f"┌{'─' * (width - 2)}┐", f"│{label}│", f"└{'─' * (width - 2)}┘")):
-            for offset, char in enumerate(text):
-                cells[top + row, x + offset] = Cell(char, (), item)
+        padding = width - 2 - cell_len(labels[item])
+        middle = f"│{' ' * (padding // 2)}{labels[item]}{' ' * (padding - padding // 2)}│"
+        for row, text in enumerate((f"┌{'─' * (width - 2)}┐", middle, f"└{'─' * (width - 2)}┘")):
+            for offset, cell in enumerate(_cells_of(text, item)):
+                cells[top + row, x + offset] = cell
     for position, mask in masks.items():
         cells.setdefault(position, Cell(JOINTS.get(mask, "┼"), tuple(owners[position])))
     for position, (char, wire) in letters.items():
         cells[position] = Cell(char, (wire,))
     height = max((y for y, _ in cells), default=-1) + 1 + MARGIN_Y
     width = max(span, max((x + 1 for _, x in cells), default=0)) + 2 * MARGIN_X
-    grid = [[Cell() for _ in range(width)] for _ in range(height)]
+    grid = [[BLANK] * width for _ in range(height)]
     for (y, x), cell in cells.items():
         grid[y][x + MARGIN_X] = cell
     return Drawing(_frame(grid, title), boxes, wires)

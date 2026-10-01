@@ -138,7 +138,7 @@ class Hierarchy:
 
     @staticmethod
     def _ancestors(scope: Member) -> Iterator[Member]:
-        if scope.own:
+        if scope.own and scope.parts:
             yield Member(scope.kind, scope.parts)
         for length in range(len(scope.parts) - 1, 0, -1):
             yield Member(scope.kind, scope.parts[:length])
