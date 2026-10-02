@@ -39,6 +39,7 @@ HELP_ROWS: list[tuple[str, str | None, str]] = [
     ("", "history_forward", "Forward again"),
     ("l", "show_log", "Commit log; the diff of each commit beside it, Enter on a line opens it"),
     ("L", "show_file_log", "History of the open file"),
+    ("B", "show_branches", "Branches compared with the default branch; Enter the log, d the diff, v browse the files without switching, the first row returns"),
     ("g", "show_changes", "All uncommitted changes as one diff"),
     ("b", "toggle_blame", "Show who last changed each line; Enter on a line opens that commit"),
     ("c", "toggle_coverage", "Show or hide what the tests ran; reports are found by name or given with --coverage"),

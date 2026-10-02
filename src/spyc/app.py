@@ -55,11 +55,14 @@ from spyc.deps.graph import DependencyGraph, Stopped
 from spyc.deps.scopes import Member
 from spyc.editor import editor_command
 from spyc.git.blame import BlameLine
+from spyc.git.branches import Branch
 from spyc.git.changes import LineChanges
+from spyc.git.ref_source import GitRefSource
 from spyc.git.repository import Git
 from spyc.git.status import rollup
 from spyc.git.summary import GitSummary
 from spyc.history import JumpHistory, Place
+from spyc.screens.branches import BranchesScreen, BranchPick
 from spyc.screens.changes import ChangesScreen
 from spyc.screens.explain import ExplainScreen
 from spyc.screens.graph import GraphScreen
@@ -70,7 +73,7 @@ from spyc.screens.prompt import Prompt
 from spyc.screens.scope_menu import ScopeMenu
 from spyc.search_picker import SearchSource
 from spyc.state import StateStore
-from spyc.symbol_index import Located, SymbolIndex, default_cache_path
+from spyc.symbol_index import Located, SymbolIndex, default_cache_path, ref_cache_path
 from spyc.symbol_picker import LIST_LIMIT, SymbolSource
 from spyc.symbols import Symbol, symbols_of
 from spyc.widgets.code_view import CodeView
@@ -92,7 +95,7 @@ MARKDOWN_LIMIT = 50_000
 # and the pickers while those are open.
 MAIN_VIEW_ACTIONS = frozenset({
     "find_file", "search_project", "show_outline", "find_symbol", "go_to_definition", "search_in_file", "goto_line", "history_back", "history_forward", "show_log", "show_file_log",
-    "show_changes", "toggle_blame", "toggle_coverage", "show_graph", "edit", "copy_location", "overview", "toggle_sidebar", "toggle_ignored",
+    "show_branches", "show_changes", "toggle_blame", "toggle_coverage", "show_graph", "edit", "copy_location", "overview", "toggle_sidebar", "toggle_ignored",
     "toggle_markdown", "refresh_project", "about", "widen_sidebar", "narrow_sidebar"})
 
 
@@ -115,6 +118,7 @@ class SpycApp(App):
         Binding("f", "find_file", "Open"),
         Binding("s", "search_project", "Search"),
         Binding("l", "show_log", "Log"),
+        Binding("B", "show_branches", "Branches", show=False),
         Binding("o", "show_outline", "Outline"),
         Binding("slash", "search_in_file", "Find"),
         Binding("d", "go_to_definition", "Goto"),
@@ -157,6 +161,7 @@ class SpycApp(App):
         self.git_enabled = True
         self._git_seen = False
         self._git_slow = False
+        self._git_summary: GitSummary | None = None
         self._git_files: dict[str, str] = {}
         self._blame_on = False
         self._start_location = start
@@ -175,7 +180,7 @@ class SpycApp(App):
         self._last_query = ""
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
-        if action == "about" and self._claude is None:
+        if action == "about" and (self._claude is None or not self.source.editable):
             return False
         return not (action in MAIN_VIEW_ACTIONS and len(self.screen_stack) > 1)
 
@@ -287,7 +292,8 @@ class SpycApp(App):
         code = self._code
         path = code.display_path if code.document is not None else None
         screen = GraphScreen(self.project_root, self._graph, self._symbol_progress, path, self._graph_failure,
-                             self._explain_member if self._claude is not None else None, self.source)
+                             self._explain_member if self._claude is not None and self.source.editable else None,
+                             self.source)
         self.push_screen(screen, self._location_chosen)
 
     # Claude is used only when it is installed and logged in, which is asked once, without spending a request.
@@ -379,6 +385,8 @@ class SpycApp(App):
         return "No coverage report found; run the tests with coverage or start spyc with --coverage FILE"
 
     def action_toggle_coverage(self) -> None:
+        if self._needs_working_tree("Coverage"):
+            return
         if self._coverage is None:
             self.notify(self._why_no_coverage())
             return
@@ -392,8 +400,11 @@ class SpycApp(App):
             return
         self.overview, self._matcher, self._paths = overview, matcher, index.paths
         self._index_symbols(generation, index.paths)
-        self._coverage_loading = True
-        self._load_coverage(generation, index.paths)
+        if self.source.editable:
+            self._coverage_loading = True
+            self._load_coverage(generation, index.paths)
+        else:
+            self._apply_coverage()
         self._tree.load(model)
         self._overview_pane.show(overview)
         if index.truncated:
@@ -413,7 +424,7 @@ class SpycApp(App):
             self._refresh_git()
 
     def _refresh_git(self) -> None:
-        if self.git_enabled:
+        if self.git_enabled and self.source.editable:
             self._load_git_status()
 
     @work(thread=True, exclusive=True, group="git-status", exit_on_error=False)
@@ -427,15 +438,16 @@ class SpycApp(App):
 
     def _git_status_ready(self, status: dict[str, str] | None, summary: GitSummary | None,
                           directories: dict[str, str] | None, slow: bool) -> None:
+        if not self.source.editable:
+            return
         self._git_slow = slow
         if status is None:
             self.git_enabled = self._git_seen
             return
         changed = not self._git_seen or status != self._git_files
-        self._git_seen, self._git_files = True, status
+        self._git_seen, self._git_files, self._git_summary = True, status, summary
         self._overview_pane.show_git(summary)
-        if summary and summary.branch:
-            self.sub_title = printable(f"{self.project_root}  ⎇ {summary.branch}")
+        self._show_title()
         if changed:
             self._tree.set_status(status, directories)
             self._refresh_changes()
@@ -445,7 +457,7 @@ class SpycApp(App):
     # in when git has answered.
     def _refresh_changes(self) -> None:
         code = self._code
-        if not (self.git_enabled and self._git_seen) or code.document is None:
+        if not (self.git_enabled and self._git_seen and self.source.editable) or code.document is None:
             return
         if code.changes is None:
             code.set_changes(LineChanges())
@@ -493,7 +505,8 @@ class SpycApp(App):
         code.display = True
         if line:
             self.call_after_refresh(code.goto, line, column)
-        self.store.add_recent_file(self.project_root, path)
+        if self.source.editable:
+            self.store.add_recent_file(self.project_root, path)
         self._tree.reveal(path)
         code.focus()
         self._mark_lines()
@@ -639,7 +652,7 @@ class SpycApp(App):
 
     def action_show_log(self) -> None:
         if self._in_git():
-            self.push_screen(LogScreen(self.git), self._location_chosen)
+            self.push_screen(LogScreen(self.git, focus=self.source.commit), self._location_chosen)
 
     def action_show_file_log(self) -> None:
         if not self._in_git():
@@ -648,11 +661,72 @@ class SpycApp(App):
         if code.document is None:
             self.notify("Open a file to see its history")
             return
-        self.push_screen(LogScreen(self.git, code.display_path), self._location_chosen)
+        self.push_screen(LogScreen(self.git, code.display_path, self.source.commit), self._location_chosen)
 
     def action_show_changes(self) -> None:
-        if self._in_git():
+        if self._in_git() and not self._needs_working_tree("Showing the working-tree changes"):
             self.push_screen(ChangesScreen(lambda: self.git.working_diff(self._untracked_files())), self._location_chosen)
+
+    def action_show_branches(self) -> None:
+        if self._in_git():
+            self.push_screen(BranchesScreen(self.git), self._branch_chosen)
+
+    def _branch_chosen(self, pick: BranchPick | None) -> None:
+        if pick is None:
+            return
+        if pick.branch is None:
+            self._leave_branch()
+        else:
+            self._enter_branch(pick.branch)
+        if pick.location is not None:
+            self.open_file(pick.location.path, pick.location.line)
+
+    # The commit is fixed when the branch is chosen, so a branch that moves, or
+    # is deleted, does not change what is on the screen.
+    def _enter_branch(self, branch: Branch) -> None:
+        source = GitRefSource(self.git, branch.commit, branch.name)
+        self._switch_source(source, SymbolIndex(self.project_root, ref_cache_path(self.project_root), source))
+
+    def _leave_branch(self) -> None:
+        self._switch_source(self._disk, self._disk_symbols)
+        self._refresh_git()
+
+    def _switch_source(self, source: FileSource, symbols: SymbolIndex) -> None:
+        if isinstance(self.source, GitRefSource):
+            self.source.close()
+        self.source, self._symbols = source, symbols
+        self._about = About(symbols, lambda: self._paths, lambda: self._graph)
+        self._graph = self._graph_failure = self._coverage = self._matcher = self._paths = None
+        self.history = JumpHistory()
+        self._show_no_file()
+        if not source.editable:
+            self._git_files = {}
+            self._tree.set_status({}, {})
+        self._show_title()
+        self._reload_index()
+
+    # The open file belonged to the other source, and a document of a branch
+    # must never be reloaded from the working tree.
+    def _show_no_file(self) -> None:
+        code = self._code
+        code.document, code.display_path = None, ""
+        code.set_changes(None)
+        code.set_blame(None)
+        code.set_coverage(None)
+        self.action_overview()
+
+    def _show_title(self) -> None:
+        if self.source.editable:
+            summary = self._git_summary
+            self.sub_title = printable(f"{self.project_root}  ⎇ {summary.branch}" if summary and summary.branch
+                                       else str(self.project_root))
+        else:
+            self.sub_title = printable(f"{self.project_root}  ⎇ {self.source.ref} @ {self.source.commit[:7]} (read-only)")
+
+    def _needs_working_tree(self, what: str) -> bool:
+        if not self.source.editable:
+            self.notify(f"{what} needs the working tree; leave the branch view first (B)")
+        return not self.source.editable
 
     def action_toggle_blame(self) -> None:
         code = self._viewing()
@@ -672,11 +746,11 @@ class SpycApp(App):
             return
         if code.blame is None:
             code.set_blame([])
-        self._load_blame(code.display_path)
+        self._load_blame(code.display_path, self.source.commit)
 
     @work(thread=True, exclusive=True, group="git-blame", exit_on_error=False)
-    def _load_blame(self, path: str) -> None:
-        self.call_from_thread(self._blame_ready, path, self.git.blame(path))
+    def _load_blame(self, path: str, revision: str | None) -> None:
+        self.call_from_thread(self._blame_ready, path, self.git.blame(path, revision))
 
     def _blame_ready(self, path: str, lines: list[BlameLine] | None) -> None:
         code = self._code
@@ -710,7 +784,7 @@ class SpycApp(App):
 
     async def action_edit(self) -> None:
         code = self._viewing()
-        if code is None:
+        if code is None or self._needs_working_tree("Editing"):
             return
         command = editor_command(self.project_root / code.display_path, code.cursor_row + 1)
         if command is None:
@@ -725,7 +799,7 @@ class SpycApp(App):
     # A stat every couple of seconds needs no dependency and works on network mounts, unlike inotify.
     async def _check_for_changes(self) -> None:
         document = self._code.document
-        if document is None:
+        if document is None or not self.source.editable:
             return
         try:
             changed = document.path.stat().st_mtime != document.mtime
@@ -835,6 +909,8 @@ class SpycApp(App):
         return min(max(width, MIN_SIDEBAR_WIDTH), widest)
 
     def action_toggle_ignored(self) -> None:
+        if self._needs_working_tree("Showing ignored files"):
+            return
         self._show_ignored = not self._show_ignored
         self.notify("Showing ignored files" if self._show_ignored else "Hiding ignored files")
         self._reload_index()
