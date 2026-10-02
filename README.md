@@ -63,6 +63,7 @@ the build systems and the key files, such as the README, the build files, the CI
 | `[` `]` | Back and forward through the files you have visited |
 | `l` | Commit log; the diff of each commit beside it, `/` filters by message, `Enter` on a diff line opens it |
 | `L` | History of the open file, following renames |
+| `B` | Branches, compared with the default branch: `Enter` the log, `d` the diff, `v` browse the files read-only without switching branch; the first row returns to the working tree |
 | `g` | All uncommitted changes, staged or not, and new files, as one diff |
 | `b` | Show who last changed each line; `Enter` on a line opens that commit |
 | `c` | Show or hide what the tests ran, from the coverage reports |
@@ -91,7 +92,9 @@ Bash and Markdown headings.
 
 In a git repository the tree marks changed files and their directories, the code view marks added, changed and
 deleted lines in the margin, and the overview and the title tell the branch, the number of changes and the last
-commit. The mouse works too: click to place the cursor, scroll to move.
+commit. In a branch view the tree, the code, the search, the outline and the graph read from the branch, and
+editing, coverage and the changes of the working tree are off. The mouse works too: click to place the cursor,
+scroll to move.
 
 ## Dependencies
 
