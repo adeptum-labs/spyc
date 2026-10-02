@@ -18,20 +18,24 @@
 # Contact: info@adeptum.se
 
 
+import subprocess
+
 import pytest
 
+import spyc.search
 from repos import git, make_repo, write_files
 from spyc.core.cancellation import Cancellation
 from spyc.git.ref_source import GitRefSource
 from spyc.git.repository import Git
-from spyc.search import search_text
+from spyc.search import SearchResult, search_text
 
 
 @pytest.fixture
 def source(tmp_path):
     root = make_repo(tmp_path / "p", {"a.py": "def foo():\n    return 1\n"})
     git(root, "checkout", "-q", "-b", "feature")
-    write_files(root, {"a.py": "def foo():\n    return Foo\n", "sub/c.txt": "é foo\nfoobar\n", "sp ace.txt": "foo bar\n"})
+    write_files(root, {"a.py": "def foo():\n    return Foo\n", "sub/c.txt": "é foo\nfoobar\n", "sp ace.txt": "foo bar\n",
+                       "ver.txt": "v1 here\n"})
     (root / "bin.dat").write_bytes(b"foo\0bar")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "More")
@@ -70,6 +74,39 @@ def test_whole_word_skips_longer_words(source):
 
 def test_a_pattern_is_allowed_because_git_can_be_interrupted(source):
     assert places(look(source, r"fo+bar", regex=True)) == [("sub/c.txt", 2, 0)]
+
+
+def test_a_pattern_may_use_perl_classes_like_in_the_working_tree_search(source):
+    assert places(look(source, r"v\d", regex=True)) == [("ver.txt", 1, 0)]
+
+
+def test_a_git_without_perl_patterns_falls_back_to_extended_ones(source, monkeypatch):
+    real = spyc.search._run_search
+    tried = []
+
+    def without_pcre(command, *rest):
+        tried.append("-P" if "-P" in command else "-E")
+        if "-P" in command:
+            return SearchResult(error="Bad pattern: fatal: cannot use Perl-compatible regexes when not compiled with USE_LIBPCRE")
+        return real(command, *rest)
+
+    monkeypatch.setattr(spyc.search, "_run_search", without_pcre)
+    assert places(look(source, r"fo+bar", regex=True)) == [("sub/c.txt", 2, 0)]
+    assert tried == ["-P", "-E"]
+
+
+def test_git_may_neither_ask_nor_fetch_while_a_branch_is_searched(source, monkeypatch):
+    environments = []
+    real = subprocess.Popen
+
+    def spy(*arguments, **options):
+        environments.append(options["env"])
+        return real(*arguments, **options)
+
+    monkeypatch.setattr(subprocess, "Popen", spy)
+    look(source, "foo")
+    assert environments and all(env["GIT_TERMINAL_PROMPT"] == "0" and env["GIT_NO_LAZY_FETCH"] == "1"
+                                for env in environments)
 
 
 def test_a_bad_pattern_is_reported(source):

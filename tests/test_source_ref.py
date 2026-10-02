@@ -19,13 +19,17 @@
 
 
 import os
+import shutil
+import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
 
 from repos import git, make_repo, write_files
 from spyc.git.ref_source import GitRefSource, TreeEntry, parse_tree
-from spyc.git.repository import Git
+from spyc.git.repository import Git, fetches_missing_blobs
 
 
 @pytest.fixture
@@ -113,3 +117,60 @@ def test_a_reader_that_died_is_started_again(source):
     source._process.kill()
     source._process.wait()
     assert source.read("a.py", 100) == b"def foo():\n    return 2\n"
+
+
+def test_git_may_neither_ask_nor_fetch_while_a_branch_is_read(source, monkeypatch):
+    environments = []
+    real = subprocess.Popen
+
+    def spy(*arguments, **options):
+        environments.append(options["env"])
+        return real(*arguments, **options)
+
+    monkeypatch.setattr(subprocess, "Popen", spy)
+    source.list_files(False, 100)
+    source.read("a.py", 100)
+    assert len(environments) >= 2
+    assert all(env["GIT_TERMINAL_PROMPT"] == "0" and env["GIT_NO_LAZY_FETCH"] == "1" for env in environments)
+
+
+@pytest.mark.parametrize("version, partial, expected", [
+    ("git version 2.39.5", True, True), ("git version 2.44.0", True, False), ("git version 2.39.5", False, False),
+    ("git version 2.51.0.windows.1", True, False), ("not a version", True, True)])
+def test_an_old_git_fetches_the_missing_blobs_of_a_partial_clone(version, partial, expected):
+    assert fetches_missing_blobs(version, partial) is expected
+
+
+def test_a_complete_clone_never_fetches(repo):
+    assert Git(repo).fetches_missing_blobs() is False
+
+
+def test_a_git_that_hangs_gives_nothing_instead_of_freezing(source, tmp_path, monkeypatch):
+    real_git = shutil.which("git")
+    fake = tmp_path / "bin" / "git"
+    fake.parent.mkdir()
+    fake.write_text(f'#!/bin/sh\n[ "$3" = cat-file ] && exec sleep 30\nexec {real_git} "$@"\n')
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake.parent}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr("spyc.git.ref_source.READ_TIMEOUT_SECONDS", 0.3)
+    source.list_files(False, 100)
+    started = time.monotonic()
+    assert source.read("a.py", 100) is None
+    assert time.monotonic() - started < 5
+
+
+def test_listing_the_files_does_not_keep_the_reader_waiting(source, monkeypatch):
+    real = source._git.run
+
+    def slow(*arguments):
+        time.sleep(1.0)
+        return real(*arguments)
+
+    monkeypatch.setattr(source._git, "run", slow)
+    listing = threading.Thread(target=source.list_files, args=(False, 100))
+    listing.start()
+    time.sleep(0.2)
+    started = time.monotonic()
+    source.close()
+    assert time.monotonic() - started < 0.5
+    listing.join()

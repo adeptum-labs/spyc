@@ -19,6 +19,7 @@
 
 
 import os
+import re
 import stat
 import subprocess
 from collections.abc import Sequence
@@ -39,6 +40,24 @@ UNTRACKED_FILE_LIMIT = 1024 * 1024
 NEUTRAL_SETTINGS = ("color.ui=never", "color.diff=false", "core.quotepath=false", "diff.noprefix=false",
                     "diff.mnemonicPrefix=false", "diff.suppressBlankEmpty=false", "log.showSignature=false")
 DIFF_OPTIONS = ("--no-ext-diff", "--no-textconv")
+NO_LAZY_FETCH_VERSION = (2, 44)
+
+
+# Optional locks stay off so that polling never fights the user's own git
+# commands for index.lock. Reading a branch is offline: git neither asks for a
+# password on the terminal nor fetches the blobs a partial clone left out, as
+# that would write into the repository and can take very long.
+def git_environment(offline: bool = False) -> dict[str, str]:
+    environment = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
+    if offline:
+        environment.update(GIT_TERMINAL_PROMPT="0", GIT_NO_LAZY_FETCH="1")
+    return environment
+
+
+# GIT_NO_LAZY_FETCH, which stops that, is only understood from git 2.44.
+def fetches_missing_blobs(version_text: str, partial_clone: bool) -> bool:
+    found = re.match(r"git version (\d+)\.(\d+)", version_text)
+    return partial_clone and (found is None or (int(found[1]), int(found[2])) < NO_LAZY_FETCH_VERSION)
 
 
 @dataclass(frozen=True)
@@ -52,14 +71,12 @@ class CommitDetail:
 # way to say "no git here" instead of a family of exceptions. The calls block,
 # so the application makes them from worker threads.
 class Git:
-    def __init__(self, root: Path) -> None:
-        self.root = root
+    def __init__(self, root: Path, offline: bool = False) -> None:
+        self.root, self.offline = root, offline
 
     def run(self, *arguments: str) -> str | None:
-        # Optional locks stay off so that polling never fights the user's own
-        # git commands for index.lock. Paths are literal: a file named [id].tsx
-        # is not a pattern.
-        environment = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
+        # Paths are literal: a file named [id].tsx is not a pattern.
+        environment = git_environment(self.offline)
         options = [part for setting in NEUTRAL_SETTINGS for part in ("-c", setting)]
         command = ["git", "--no-pager", "--literal-pathspecs", "-C", str(self.root), *options, *arguments]
         try:
@@ -83,6 +100,10 @@ class Git:
             arguments += ["--follow", "--", path]
         output = self.run(*arguments)
         return None if output is None else parse_log(output)
+
+    def fetches_missing_blobs(self) -> bool:
+        partial = bool(self.run("config", "--get", "extensions.partialclone"))
+        return fetches_missing_blobs(self.run("--version") or "", partial)
 
     def branch(self) -> str | None:
         name = self.run("symbolic-ref", "--short", "-q", "HEAD")

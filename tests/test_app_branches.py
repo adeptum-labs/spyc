@@ -18,12 +18,15 @@
 # Contact: info@adeptum.se
 
 
+import threading
+
 import pytest
 from textual.widgets import OptionList
 
 from repos import git, make_repo, write_files
 from spyc.app import SpycApp
 from spyc.core.location import Location
+from spyc.git.repository import Git
 from spyc.screens.branches import BranchesScreen
 from spyc.screens.log import LogScreen
 from spyc.state import StateStore
@@ -152,6 +155,70 @@ async def test_a_file_chosen_in_a_branch_diff_opens_in_the_branch(repo, tmp_path
         await ready(pilot)
         assert app.query_one(CodeView).document.lines[0] == "def only_here():"
         assert "read-only" in app.sub_title
+
+
+async def test_choosing_the_working_tree_while_on_it_changes_nothing(repo, tmp_path):
+    app = make_app(repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("a.py")
+        await pilot.press("B")
+        await ready(pilot)
+        await pilot.press("v")
+        await ready(pilot)
+        assert app.query_one(CodeView).display_path == "a.py"
+
+
+async def test_the_overview_shows_no_git_line_of_the_working_tree_in_a_branch(repo, tmp_path):
+    app = make_app(repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        line = app._overview_pane.query_one("#git")
+        await until(pilot, lambda: line.display)
+        await view_feature(pilot, app)
+        assert not line.display
+        await pilot.press("B")
+        await ready(pilot)
+        await pilot.press("v")
+        await until(pilot, lambda: line.display)
+
+
+async def test_a_partial_clone_that_would_fetch_is_refused(repo, tmp_path, monkeypatch):
+    monkeypatch.setattr(Git, "fetches_missing_blobs", lambda self: True)
+    app = make_app(repo, tmp_path)
+    notes = []
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.notify = lambda message, **options: notes.append(message)
+        await pilot.press("B")
+        await ready(pilot)
+        choose(pilot, "feature")
+        await pilot.press("v")
+        await ready(pilot)
+        assert app.source.editable and any("partial clone" in note for note in notes)
+
+
+async def test_the_files_of_a_branch_are_listed_off_the_interface_thread(repo, tmp_path, monkeypatch):
+    on_interface_thread = []
+    real = Git.run
+
+    def spy(self, *arguments):
+        if arguments and arguments[0] == "ls-tree":
+            on_interface_thread.append(threading.current_thread() is threading.main_thread())
+        return real(self, *arguments)
+
+    monkeypatch.setattr(Git, "run", spy)
+    app = make_app(repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        await pilot.press("B")
+        await ready(pilot)
+        choose(pilot, "feature")
+        await pilot.press("d")
+        await ready(pilot)
+        app.screen.dismiss(Location("only_here.py", 1))
+        await until(pilot, lambda: app.query_one(CodeView).document is not None)
+        assert on_interface_thread and not any(on_interface_thread)
 
 
 async def test_the_working_tree_is_never_touched(repo, tmp_path):

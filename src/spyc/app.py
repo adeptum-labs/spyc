@@ -162,6 +162,7 @@ class SpycApp(App):
         self._git_seen = False
         self._git_slow = False
         self._git_summary: GitSummary | None = None
+        self._open_after_listing: Location | None = None
         self._git_files: dict[str, str] = {}
         self._blame_on = False
         self._start_location = start
@@ -414,6 +415,9 @@ class SpycApp(App):
         focus = code.display_path if code.document is not None else (start.path if start else "")
         if focus:
             self._tree.reveal(focus)
+        if self._open_after_listing is not None:
+            location, self._open_after_listing = self._open_after_listing, None
+            self.open_file(location.path, location.line)
 
     # Git is asked again on a timer, when the window regains focus, after the
     # editor and on request, and not at all once it is clear that this is not a
@@ -671,21 +675,28 @@ class SpycApp(App):
         if self._in_git():
             self.push_screen(BranchesScreen(self.git), self._branch_chosen)
 
+    # Choosing the working tree while on it keeps the open file and the history.
+    # A file chosen in the log or the diff of a branch is opened once the files of
+    # the branch are listed, so that the interface never waits for the listing.
     def _branch_chosen(self, pick: BranchPick | None) -> None:
-        if pick is None:
+        if pick is None or (pick.branch is None and self.source.editable):
             return
         if pick.branch is None:
             self._leave_branch()
-        else:
-            self._enter_branch(pick.branch)
-        if pick.location is not None:
-            self.open_file(pick.location.path, pick.location.line)
+        elif not self._enter_branch(pick.branch):
+            return
+        self._open_after_listing = pick.location
 
     # The commit is fixed when the branch is chosen, so a branch that moves, or
     # is deleted, does not change what is on the screen.
-    def _enter_branch(self, branch: Branch) -> None:
+    def _enter_branch(self, branch: Branch) -> bool:
+        if self.git.fetches_missing_blobs():
+            self.notify("This is a partial clone, and this git would fetch the missing files from the remote while "
+                        "a branch is read; use git 2.44 or newer, or a full clone", severity="warning")
+            return False
         source = GitRefSource(self.git, branch.commit, branch.name)
         self._switch_source(source, SymbolIndex(self.project_root, ref_cache_path(self.project_root), source))
+        return True
 
     def _leave_branch(self) -> None:
         self._switch_source(self._disk, self._disk_symbols)
@@ -702,6 +713,7 @@ class SpycApp(App):
         if not source.editable:
             self._git_files = {}
             self._tree.set_status({}, {})
+        self._overview_pane.show_git(self._git_summary if source.editable else None)
         self._show_title()
         self._reload_index()
 

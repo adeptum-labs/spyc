@@ -38,7 +38,7 @@ from spyc.screens.changes import ChangesScreen
 from spyc.screens.log import LogScreen
 from spyc.screens.prompt import Prompt
 
-NAME_WIDTH = 30
+MAX_NAME_WIDTH = 60
 COUNT_WIDTH = 9
 PENDING = "…"
 
@@ -68,6 +68,7 @@ class BranchesScreen(Screen[BranchPick | None]):
         self._counts: dict[str, tuple[int, int] | None] = {}
         self._visible: list[Branch | None] = [None]
         self._filter = ""
+        self._name_width = 0
         self._generation = 0
 
     def compose(self) -> ComposeResult:
@@ -91,6 +92,8 @@ class BranchesScreen(Screen[BranchPick | None]):
             self.notify("Could not read the branches", severity="error")
             return
         self._branches, self._base = branches, default_base(branches, origin_head)
+        if not branches:
+            self.notify("No branches yet: the repository has no commits")
         if self._base is not None:
             self.sub_title = f"Branches, compared with {printable(self._base.name)}"
         self._render_rows()
@@ -118,11 +121,13 @@ class BranchesScreen(Screen[BranchPick | None]):
         wanted = self._filter.lower()
         shown = [branch for branch in self._ordered() if wanted in branch.name.lower()]
         self._visible = [None, *shown]
+        self._name_width = min(max((len(b.name) for b in self._branches), default=0), MAX_NAME_WIDTH)
         now = time.time()
         options = self.query_one(OptionList)
         options.clear_options()
         options.add_options([Option(Text("working tree", style="bold")), *(Option(self._label(b, now)) for b in shown)])
-        options.highlighted = 0
+        # A filter is typed to reach a branch, so Enter after it goes to the first one.
+        options.highlighted = 1 if self._filter and shown else 0
 
     def _ordered(self) -> list[Branch]:
         return [*(b for b in self._branches if not b.remote), *(b for b in self._branches if b.remote)]
@@ -130,12 +135,15 @@ class BranchesScreen(Screen[BranchPick | None]):
     def _label(self, branch: Branch, now: float) -> Text:
         label = Text(no_wrap=True, overflow="ellipsis")
         label.append("* " if branch.current else "  ", style="bold green")
-        label.append(f"{printable(branch.name)[:NAME_WIDTH]:<{NAME_WIDTH}} ", style="cyan" if branch.remote else "green")
+        label.append(f"{self._fitted(printable(branch.name)):<{self._name_width}} ", style="cyan" if branch.remote else "green")
         label.append(f"{self._count_text(branch):<{COUNT_WIDTH}} ", style="yellow")
         label.append(f"{age(now - branch.timestamp):>3} ", style="dim")
         label.append(f"{printable(branch.author)[:14]:<14} ", style="cyan")
         label.append(printable(branch.subject))
         return label
+
+    def _fitted(self, name: str) -> str:
+        return name if len(name) <= self._name_width else name[:self._name_width - 1] + "…"
 
     def _count_text(self, branch: Branch) -> str:
         if branch == self._base:

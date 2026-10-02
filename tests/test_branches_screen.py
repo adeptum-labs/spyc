@@ -144,10 +144,36 @@ async def test_the_filter_keeps_the_working_tree_row_and_the_matching_branches(r
         assert len(rows) == 2 and rows[0].startswith("working tree") and "feature/x" in rows[1]
 
 
-async def test_a_repository_without_commits_only_offers_the_working_tree(tmp_path):
+async def test_after_filtering_the_first_matching_branch_is_the_one_under_the_cursor(repo):
+    async with BranchesApp(repo).run_test(size=(120, 30)) as pilot:
+        await ready(pilot)
+        options = pilot.app.screen.query_one(OptionList)
+        pilot.app.screen._filtered("feat")
+        await pilot.pause()
+        assert options.highlighted == 1
+        pilot.app.screen._filtered("nothing like it")
+        await pilot.pause()
+        assert options.highlighted == 0
+
+
+async def test_a_repository_without_commits_says_so_and_only_offers_the_working_tree(tmp_path):
     root = tmp_path / "empty"
     root.mkdir()
     git(root, "init", "-q")
-    async with BranchesApp(root).run_test(size=(120, 30)) as pilot:
+    app = BranchesApp(root)
+    notes = []
+    app.notify = lambda message, **options: notes.append(message)
+    async with app.run_test(size=(120, 30)) as pilot:
         await ready(pilot)
         assert len(labels(pilot)) == 1 and labels(pilot)[0].startswith("working tree")
+        assert notes == ["No branches yet: the repository has no commits"]
+
+
+async def test_branch_names_are_shown_whole_up_to_a_generous_width(tmp_path):
+    root = make_repo(tmp_path / "p", {"a.py": "x = 1\n"})
+    first, second = "feature/" + "a" * 40 + "-one", "feature/" + "a" * 40 + "-two"
+    for name in (first, second):
+        git(root, "branch", name)
+    async with BranchesApp(root).run_test(size=(160, 30)) as pilot:
+        await ready(pilot)
+        assert any(first in label for label in labels(pilot)) and any(second in label for label in labels(pilot))

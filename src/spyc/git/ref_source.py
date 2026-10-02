@@ -28,7 +28,9 @@ from pathlib import Path
 from spyc.core.document import FILE_LIMIT, Document, document_of, oversized
 from spyc.core.file_index import FileIndex
 from spyc.core.source import FileStamp
-from spyc.git.repository import Git
+from spyc.git.repository import Git, git_environment
+
+READ_TIMEOUT_SECONDS = 10.0
 
 
 @dataclass(frozen=True)
@@ -57,7 +59,7 @@ class GitRefSource:
     editable = False
 
     def __init__(self, git: Git, commit: str, ref: str) -> None:
-        self._git, self.root, self.commit, self.ref = git, git.root, commit, ref
+        self._git, self.root, self.commit, self.ref = Git(git.root, offline=True), git.root, commit, ref
         self._entries: dict[str, TreeEntry] | None = None
         self._process: subprocess.Popen[bytes] | None = None
         self._lock = threading.Lock()
@@ -89,28 +91,45 @@ class GitRefSource:
         with self._lock:
             self._stop()
 
+    # The listing runs outside the lock: it can take seconds on a big repository,
+    # and whoever wants to close the source or read a file must not wait for it.
     def _tree(self) -> dict[str, TreeEntry]:
         with self._lock:
-            if self._entries is None:
-                output = self._git.run("ls-tree", "-r", "-l", "-z", "--full-tree", self.commit)
-                if output is None:
-                    return {}
-                self._entries = parse_tree(output)
-            return self._entries
+            entries = self._entries
+        if entries is None:
+            output = self._git.run("ls-tree", "-r", "-l", "-z", "--full-tree", self.commit)
+            if output is None:
+                return {}
+            entries = parse_tree(output)
+            with self._lock:
+                self._entries = entries
+        return entries
 
+    # A reader that stops answering is killed after a while, so that a stalled git
+    # cannot hold the lock, and with it the interface, for good.
     def _blob(self, oid: str) -> bytes | None:
         with self._lock:
             for _ in range(2):
+                watchdog = threading.Timer(READ_TIMEOUT_SECONDS, self._kill)
+                watchdog.start()
                 try:
                     return self._request(oid)
                 except (OSError, ValueError):
                     self._stop()
+                finally:
+                    watchdog.cancel()
         return None
+
+    def _kill(self) -> None:
+        process = self._process
+        if process is not None:
+            process.kill()
 
     def _request(self, oid: str) -> bytes | None:
         if self._process is None:
             self._process = subprocess.Popen(["git", "-C", str(self.root), "cat-file", "--batch"],
-                                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                             env=git_environment(offline=True))
         process = self._process
         process.stdin.write(f"{oid}\n".encode())
         process.stdin.flush()

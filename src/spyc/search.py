@@ -32,6 +32,7 @@ from spyc.core.cancellation import Cancellation
 from spyc.core.file_index import SKIPPED_DIRECTORIES
 from spyc.core.fileio import read_limited
 from spyc.core.source import FileSource
+from spyc.git.repository import git_environment
 
 MAX_HITS = 2000
 MAX_LINE = 500
@@ -94,25 +95,31 @@ def _ripgrep(root: Path, query: str, regex: bool, whole_word: bool, limit: int,
 
 # git grep takes the same smart case and the same literal or pattern choice as
 # ripgrep does, and reads the commit itself, so there is no working tree to search.
+# A pattern is Perl-like first, as ripgrep's is (\d works), and only extended
+# when this git was built without PCRE.
 def _git_grep(source: FileSource, query: str, regex: bool, whole_word: bool, limit: int,
               cancellation: Cancellation) -> SearchResult:
-    command = ["git", "-C", str(source.root), "-c", "color.ui=never", "grep", "-z", "-n", "--column", "-I",
-               "-E" if regex else "-F"]
-    if not any(char.isupper() for char in query):
-        command.append("-i")
-    if whole_word:
-        command.append("-w")
-    command += ["-e", query, source.commit]
-    return _run_search(command, source.root, _grep_hit_of, regex, limit, cancellation)
+    for flavour in ("-P", "-E") if regex else ("-F",):
+        command = ["git", "-C", str(source.root), "-c", "color.ui=never", "grep", "-z", "-n", "--column", "-I", flavour]
+        if not any(char.isupper() for char in query):
+            command.append("-i")
+        if whole_word:
+            command.append("-w")
+        command += ["-e", query, source.commit]
+        result = _run_search(command, source.root, _grep_hit_of, regex, limit, cancellation,
+                             git_environment(offline=True))
+        if not (result.error and "Perl-compatible" in result.error):
+            break
+    return result
 
 
 # Both tools end with status 1 when nothing matched and with a higher one when
 # they failed.
 def _run_search(command: list[str], cwd: Path, parse: Callable[[bytes], Hit | None], regex: bool, limit: int,
-                cancellation: Cancellation) -> SearchResult:
+                cancellation: Cancellation, env: dict[str, str] | None = None) -> SearchResult:
     result = SearchResult()
     try:
-        process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError as error:
         return SearchResult(error=f"Search failed: {error}")
     cancellation.on_cancel(process.kill)
