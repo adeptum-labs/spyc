@@ -20,8 +20,9 @@
 
 import spyc.core.overview
 from repos import write_files
-from spyc.core.file_index import build_index
+from spyc.core.file_index import FileIndex, build_index
 from spyc.core.overview import build_overview, summary_text
+from spyc.core.source import FileStamp
 
 
 def overview_of(root, files):
@@ -89,3 +90,17 @@ def test_a_project_of_one_file_says_file_not_files(tmp_path):
 
     assert count_of(tmp_path / "one", {"a.py": "x"}) == "1 file"
     assert count_of(tmp_path / "two", {"a.py": "x", "b.py": "y"}) == "2 files"
+
+
+def test_sizes_and_the_readme_come_from_the_source(tmp_path):
+    class Source:
+        def stamp(self, path):
+            return FileStamp(("x",), 40)
+
+        def read(self, path, limit):
+            return b"# From the branch\n"
+
+    index = FileIndex(tmp_path / "missing", ("README.md", "a.py"), False)
+    overview = build_overview(index, Source())
+    assert overview.readme == "# From the branch"
+    assert overview.languages[0].size == 40

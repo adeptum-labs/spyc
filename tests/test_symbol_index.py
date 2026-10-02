@@ -27,7 +27,8 @@ import pytest
 import spyc.symbol_index
 from repos import write_files
 from spyc.core.languages import detect_language
-from spyc.symbol_index import Located, SymbolIndex, default_cache_path
+from spyc.core.source import FileStamp
+from spyc.symbol_index import Located, SymbolIndex, default_cache_path, ref_cache_path
 from spyc.symbols import Symbol
 
 FILES = {"a.py": "def foo():\n    pass\n", "src/B.java": "class B { void foo() {} }\n", "notes.txt": "def foo\n",
@@ -240,3 +241,38 @@ def test_a_cargo_manifest_is_indexed_for_the_name_of_its_crate(tmp_path):
     index = SymbolIndex(tmp_path / "project")
     index.update(("Cargo.toml", "src/lib.rs"))
     assert [imported.path for imported in index.facts()["Cargo.toml"].imports] == ["grep-regex"]
+
+
+class FakeSource:
+    root, ref, commit, editable = None, "x", "c0ffee", False
+
+    def __init__(self, files):
+        self.files = files
+
+    def stamp(self, path):
+        return FileStamp((f"oid-{hash(self.files[path])}",), len(self.files[path]))
+
+    def read(self, path, limit):
+        return self.files[path].encode()
+
+
+def test_files_are_read_and_stamped_through_the_source(tmp_path):
+    source = FakeSource({"a.py": "def only_in_the_source():\n    pass\n"})
+    index = SymbolIndex(tmp_path / "nowhere", None, source)
+    index.update(("a.py",))
+    assert names(index.all()) == [("a.py", "only_in_the_source", 1)]
+
+
+def test_a_cache_keeps_files_whose_stamp_is_unchanged(tmp_path, monkeypatch):
+    cache = tmp_path / "cache.json"
+    source = FakeSource({"a.py": "def foo():\n    pass\n"})
+    SymbolIndex(tmp_path, cache, source).update(("a.py",))
+    parsed = []
+    real = spyc.symbol_index.analyse
+    monkeypatch.setattr(spyc.symbol_index, "analyse", lambda text, language: parsed.append(1) or real(text, language))
+    SymbolIndex(tmp_path, cache, source).update(("a.py",))
+    assert parsed == []
+
+
+def test_the_cache_of_a_branch_is_not_the_cache_of_the_disk(tmp_path):
+    assert ref_cache_path(tmp_path) != default_cache_path(tmp_path)

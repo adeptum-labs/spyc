@@ -27,10 +27,12 @@ from spyc.core.file_index import MAX_INDEXED_FILES, FileIndex
 from spyc.core.languages import detect_language
 from spyc.core.printable import printable
 from spyc.core.project import KeyFile, detect_build_systems, key_files
+from spyc.core.source import DiskSource, FileSource
 
 STAT_LIMIT = 50_000
 README_LINES = 40
 README_BYTES = 8192
+README_FILE_LIMIT = 1024 * 1024
 BAR_WIDTH = 20
 LANGUAGES_SHOWN = 8
 
@@ -58,19 +60,17 @@ class Overview:
 
 # Sizing every file of a huge tree would stall the start-up for seconds, so
 # the shares are measured on the first STAT_LIMIT files and marked as sampled.
-def build_overview(index: FileIndex) -> Overview:
+def build_overview(index: FileIndex, source: FileSource | None = None) -> Overview:
+    source = source or DiskSource(index.root)
     totals: dict[str, list[int]] = {}
     for path in index.paths[:STAT_LIMIT]:
         language = detect_language(path)
-        if language is None:
-            continue
-        try:
-            size = (index.root / path).stat().st_size
-        except OSError:
+        stamp = None if language is None else source.stamp(path)
+        if stamp is None:
             continue
         entry = totals.setdefault(language.name, [0, 0])
         entry[0] += 1
-        entry[1] += size
+        entry[1] += stamp.size
     everything = sum(size for _, size in totals.values())
     shares = (LanguageShare(name, files, size, round(100 * size / everything, 1) if everything else 0.0)
               for name, (files, size) in totals.items())
@@ -78,19 +78,15 @@ def build_overview(index: FileIndex) -> Overview:
     return Overview(index.root.name, index.root, len(index.paths), index.truncated, len(index.paths) > STAT_LIMIT,
                     tuple(detect_build_systems(index.paths)),
                     tuple(sorted(shares, key=lambda share: (-share.size, share.name))), tuple(keys),
-                    _readme(index.root, keys))
+                    _readme(source, keys))
 
 
-def _readme(root: Path, keys: list[KeyFile]) -> str | None:
+def _readme(source: FileSource, keys: list[KeyFile]) -> str | None:
     name = next((key.path for key in keys if key.kind == "Readme" and "/" not in key.path), None)
-    if name is None:
+    data = None if name is None else source.read(name, README_FILE_LIMIT)
+    if data is None:
         return None
-    try:
-        with (root / name).open("rb") as handle:
-            data = handle.read(README_BYTES)
-    except OSError:
-        return None
-    text = printable(data.decode("utf-8", errors="replace"), keep_newlines=True)
+    text = printable(data[:README_BYTES].decode("utf-8", errors="replace"), keep_newlines=True)
     return "\n".join(text.splitlines()[:README_LINES])
 
 

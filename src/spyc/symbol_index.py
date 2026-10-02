@@ -29,8 +29,8 @@ from pathlib import Path
 
 from spyc.analysis import Analysis, analyse
 from spyc.core.cache_files import cache_path, write_atomically
-from spyc.core.fileio import read_limited
 from spyc.core.languages import CARGO_MANIFEST, GO_MODULE, Language, detect_language
+from spyc.core.source import DiskSource, FileSource
 from spyc.deps.facts import FileFacts, facts_from_json, facts_to_json
 from spyc.symbols import Symbol
 
@@ -50,6 +50,10 @@ class Located:
 
 def default_cache_path(root: Path) -> Path:
     return cache_path(root, "symbols")
+
+
+def ref_cache_path(root: Path) -> Path:
+    return cache_path(root, "symbols-ref")
 
 
 # The definitions found depend on the tags queries and on the grammars that
@@ -79,8 +83,9 @@ def _indexable(path: str) -> Language | None:
 # time, on disk too, so that only files that changed are parsed again the next
 # time. Nothing is read from disk until `update` runs.
 class SymbolIndex:
-    def __init__(self, root: Path, cache_path: Path | None = None) -> None:
+    def __init__(self, root: Path, cache_path: Path | None = None, source: FileSource | None = None) -> None:
         self._root, self._cache_path = root, cache_path
+        self._source = source or DiskSource(root)
         self._lock = threading.Lock()
         self._files: dict[str, list[Symbol]] = {}
         self._facts: dict[str, FileFacts] = {}
@@ -131,26 +136,24 @@ class SymbolIndex:
         return self._flat
 
     def _refresh(self, path: str, language: Language) -> None:
-        try:
-            status = (self._root / path).stat()
-        except OSError:
+        stamp = self._source.stamp(path)
+        if stamp is None:
             return
-        stamp = [status.st_mtime_ns, status.st_size]
+        token = list(stamp.token)
         with self._lock:
-            if self._stamps.get(path) == stamp and path in self._files:
+            if self._stamps.get(path) == token and path in self._files:
                 return
-        analysis = self._read(self._root / path, language)
+        analysis = self._read(path, language)
         with self._lock:
-            self._files[path], self._stamps[path] = analysis.symbols, stamp
+            self._files[path], self._stamps[path] = analysis.symbols, token
             if analysis.facts is not None:
                 self._facts[path] = analysis.facts
             else:
                 self._facts.pop(path, None)
             self._changed, self._flat = True, None
 
-    @staticmethod
-    def _read(file: Path, language: Language) -> Analysis:
-        data = read_limited(file, MAX_SYMBOL_FILE)
+    def _read(self, path: str, language: Language) -> Analysis:
+        data = self._source.read(path, MAX_SYMBOL_FILE)
         if data is None or b"\0" in data[:BINARY_PROBE]:
             return Analysis([], None)
         return analyse(data.decode("utf-8", errors="replace"), language)
