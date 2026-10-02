@@ -19,6 +19,7 @@
 
 
 from repos import write_files
+from spyc.core.source import DiskSource
 from spyc.symbol_index import Located
 from spyc.symbol_picker import SymbolSource
 from spyc.symbols import Symbol
@@ -65,7 +66,7 @@ def test_the_status_is_whatever_the_owner_says():
 
 def test_the_preview_loads_the_file_and_a_vanished_file_gives_none(tmp_path):
     write_files(tmp_path, {"a.py": "def render(): pass\n"})
-    picker = SymbolSource(tmp_path, lambda: ENTRIES, "x", True)
+    picker = SymbolSource(DiskSource(tmp_path), lambda: ENTRIES, "x", True)
     item = picker.search("render")[0]
     assert picker.preview(item).lines[0] == "def render(): pass"
     (tmp_path / "a.py").unlink()

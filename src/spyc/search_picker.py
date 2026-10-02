@@ -20,14 +20,14 @@
 
 import threading
 from collections.abc import Callable, Sequence
-from pathlib import Path
 
 from rich.text import Text
 
 from spyc.core.cancellation import Cancellation
-from spyc.core.document import Document, load_document
+from spyc.core.document import Document
 from spyc.core.picking import Item
 from spyc.core.printable import printable
+from spyc.core.source import FileSource
 from spyc.search import MAX_HITS, Hit, SearchResult, search_text
 
 
@@ -39,8 +39,8 @@ class SearchSource:
     threaded = True
     debounce = 0.25
 
-    def __init__(self, root: Path, paths: Callable[[], Sequence[str]], whole_word: bool = False) -> None:
-        self._root, self._paths = root, paths
+    def __init__(self, source: FileSource, paths: Callable[[], Sequence[str]], whole_word: bool = False) -> None:
+        self._source, self._paths = source, paths
         self.regex, self.whole_word = False, whole_word
         self._last = ("", SearchResult())
         self._lock = threading.Lock()
@@ -74,14 +74,14 @@ class SearchSource:
         cancellation = Cancellation()
         with self._lock:
             self._cancellation = cancellation
-        result = search_text(self._root, self._paths(), query, regex=self.regex, whole_word=self.whole_word,
+        result = search_text(self._source.root, self._paths(), query, regex=self.regex, whole_word=self.whole_word,
                              limit=MAX_HITS, cancellation=cancellation)
         self._last = (query, result)
         return [Item(hit.path, self._label(hit, query), hit.line, hit.column) for hit in result.hits]
 
     def preview(self, item: Item) -> Document | None:
         try:
-            return load_document(self._root / item.key)
+            return self._source.document(item.key)
         except OSError:
             return None
 

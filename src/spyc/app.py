@@ -46,6 +46,7 @@ from spyc.core.location import Location
 from spyc.core.overview import Overview, build_overview
 from spyc.core.picking import Choice
 from spyc.core.printable import printable
+from spyc.core.source import DiskSource
 from spyc.core.tree_model import TreeModel
 from spyc.coverage.index import Coverage
 from spyc.coverage.reports import find_reports, load_reports
@@ -162,6 +163,7 @@ class SpycApp(App):
         self._max_files = max_files
         self._matcher: PathMatcher | None = None
         self._paths: tuple[str, ...] | None = None
+        self._disk = DiskSource(project_root)
         self._symbols = SymbolIndex(project_root, default_cache_path(project_root))
         self._about = About(self._symbols, lambda: self._paths, lambda: self._graph)
         self._answers = AnswerCache(cache_path(project_root, "claude"))
@@ -283,7 +285,7 @@ class SpycApp(App):
         code = self._code
         path = code.display_path if code.document is not None else None
         screen = GraphScreen(self.project_root, self._graph, self._symbol_progress, path, self._graph_failure,
-                             self._explain_member if self._claude is not None else None)
+                             self._explain_member if self._claude is not None else None, self._disk)
         self.push_screen(screen, self._location_chosen)
 
     # Claude is used only when it is installed and logged in, which is asked once, without spending a request.
@@ -525,14 +527,14 @@ class SpycApp(App):
         if self._matcher is None:
             self.notify("Still reading the project files")
             return
-        source = FilePickerSource(self.project_root, self._matcher, lambda: self.store.recent_files(self.project_root))
+        source = FilePickerSource(self._disk, self._matcher, lambda: self.store.recent_files(self.project_root))
         self.push_screen(Picker(source), self._file_chosen)
 
     def action_search_project(self) -> None:
         if self._paths is None:
             self.notify("Still reading the project files")
             return
-        self.push_screen(Picker(SearchSource(self.project_root, lambda: self._paths)), self._file_chosen)
+        self.push_screen(Picker(SearchSource(self._disk, lambda: self._paths)), self._file_chosen)
 
     def _viewing_for(self, purpose: str) -> CodeView | None:
         code = self._viewing()
@@ -550,11 +552,11 @@ class SpycApp(App):
             self.notify("No outline for this file")
             return
         entries = [Located(code.display_path, symbol) for symbol in symbols]
-        source = SymbolSource(self.project_root, lambda: entries, "Jump to a definition in this file", False)
+        source = SymbolSource(self._disk, lambda: entries, "Jump to a definition in this file", False)
         self.push_screen(Picker(source), self._file_chosen)
 
     def action_find_symbol(self) -> None:
-        source = SymbolSource(self.project_root, self._symbols.all, "Find a definition in the project", True,
+        source = SymbolSource(self._disk, self._symbols.all, "Find a definition in the project", True,
                               self._symbol_progress, LIST_LIMIT)
         self.push_screen(Picker(source), self._file_chosen)
 
@@ -578,12 +580,12 @@ class SpycApp(App):
         if len(candidates) == 1 and detect_language(candidates[0].path) == code.document.language:
             self.open_file(candidates[0].path, candidates[0].symbol.line, candidates[0].symbol.column)
         elif candidates:
-            source = SymbolSource(self.project_root, lambda: candidates, f"Definitions of {printable(word)}", True)
+            source = SymbolSource(self._disk, lambda: candidates, f"Definitions of {printable(word)}", True)
             self.push_screen(Picker(source), self._file_chosen)
         else:
             self.notify(f"No definition of {printable(word)} found{self._index_progress_note()}; showing where it is used",
                         markup=False)
-            source = SearchSource(self.project_root, lambda: self._paths or (), whole_word=True)
+            source = SearchSource(self._disk, lambda: self._paths or (), whole_word=True)
             self.push_screen(Picker(source, word), self._file_chosen)
 
     def _index_progress_note(self) -> str:

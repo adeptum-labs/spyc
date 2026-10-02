@@ -22,6 +22,7 @@ import pytest
 
 from repos import write_files
 from spyc.core.file_index import build_index
+from spyc.core.source import DiskSource
 from spyc.search import SearchResult
 from spyc.search_picker import SearchSource
 
@@ -30,7 +31,7 @@ from spyc.search_picker import SearchSource
 def source(tmp_path):
     write_files(tmp_path, {"a.py": "def foo():\n    return 1\n", "b.txt": "  a foo here\nfoobar\n", "ctl.txt": "foo \x1b[2J\n"})
     paths = build_index(tmp_path).paths
-    return SearchSource(tmp_path, lambda: paths)
+    return SearchSource(DiskSource(tmp_path), lambda: paths)
 
 
 def test_each_hit_becomes_an_item_with_its_file_and_line(source):
@@ -92,7 +93,7 @@ def test_the_preview_loads_the_file_and_a_vanished_file_gives_none(source, tmp_p
 def test_a_search_can_start_in_whole_word_mode(tmp_path):
     write_files(tmp_path, {"a.txt": "foo\nfoobar\n"})
     paths = build_index(tmp_path).paths
-    picked = SearchSource(tmp_path, lambda: paths, whole_word=True)
+    picked = SearchSource(DiskSource(tmp_path), lambda: paths, whole_word=True)
     assert picked.mode_text() == "literal · whole word"
     assert [item.line for item in picked.search("foo")] == [1]
 

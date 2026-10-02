@@ -19,14 +19,14 @@
 
 
 from collections.abc import Callable, Sequence
-from pathlib import Path
 
 from rich.text import Text
 
-from spyc.core.document import Document, load_document
+from spyc.core.document import Document
 from spyc.core.fuzzy import rank_counted
 from spyc.core.picking import Item
 from spyc.core.printable import printable
+from spyc.core.source import FileSource
 from spyc.symbol_index import Located
 
 KIND_WIDTH = 10
@@ -41,9 +41,9 @@ PAUSE = 0.15
 # Where the path is shown it is searched too, so "parser src/api" narrows the
 # definitions by their directory.
 class SymbolSource:
-    def __init__(self, root: Path | None, entries: Callable[[], Sequence[Located]], placeholder: str,
+    def __init__(self, source: FileSource | None, entries: Callable[[], Sequence[Located]], placeholder: str,
                  show_path: bool, status: Callable[[], str] = lambda: "", limit: int | None = None) -> None:
-        self._root, self._entries, self.placeholder = root, entries, placeholder
+        self._source, self._entries, self.placeholder = source, entries, placeholder
         self._show_path, self._status, self._limit = show_path, status, limit
         self.threaded = limit is not None
         self.debounce = PAUSE if self.threaded else 0.0
@@ -68,7 +68,7 @@ class SymbolSource:
 
     def preview(self, item: Item) -> Document | None:
         try:
-            return load_document(self._root / item.key)
+            return self._source.document(item.key)
         except OSError:
             return None
 

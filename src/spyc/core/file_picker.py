@@ -19,22 +19,22 @@
 
 
 from collections.abc import Callable, Sequence
-from pathlib import Path
 
 from rich.text import Text
 
-from spyc.core.document import Document, load_document
+from spyc.core.document import Document
 from spyc.core.fuzzy import Match, PathMatcher
 from spyc.core.location import split_line_suffix
 from spyc.core.picking import Item
 from spyc.core.printable import printable
+from spyc.core.source import FileSource
 
 
 class FilePickerSource:
     placeholder = "Find file  (name:line jumps to a line)"
 
-    def __init__(self, root: Path, matcher: PathMatcher, recent: Callable[[], Sequence[str]]) -> None:
-        self._root, self._matcher, self._recent = root, matcher, recent
+    def __init__(self, source: FileSource, matcher: PathMatcher, recent: Callable[[], Sequence[str]]) -> None:
+        self._source, self._matcher, self._recent = source, matcher, recent
 
     def search(self, query: str) -> list[Item]:
         text, line = split_line_suffix(query)
@@ -42,7 +42,7 @@ class FilePickerSource:
 
     def preview(self, item: Item) -> Document | None:
         try:
-            return load_document(self._root / item.key)
+            return self._source.document(item.key)
         except OSError:
             return None
 

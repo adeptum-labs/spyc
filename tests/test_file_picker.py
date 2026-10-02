@@ -18,8 +18,12 @@
 # Contact: info@adeptum.se
 
 
+from pathlib import Path
+
+from spyc.core.document import Document
 from spyc.core.file_picker import FilePickerSource
 from spyc.core.fuzzy import PathMatcher
+from spyc.core.source import DiskSource
 
 PATHS = ["src/app.py", "README.md", "tests/test_app.py"]
 
@@ -28,7 +32,7 @@ def make_source(tmp_path, recent=()):
     for path in PATHS:
         (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / path).write_text("x = 1\n")
-    return FilePickerSource(tmp_path, PathMatcher(PATHS), lambda: recent)
+    return FilePickerSource(DiskSource(tmp_path), PathMatcher(PATHS), lambda: recent)
 
 
 def test_items_carry_the_path_and_a_line_suffix(tmp_path):
@@ -53,7 +57,7 @@ def test_a_file_in_the_root_has_no_directory_part(tmp_path):
 
 def test_a_deep_path_keeps_its_file_name_where_a_narrow_list_cuts_the_end(tmp_path):
     deep = "src/main/java/se/adeptum/project/service/impl/CustomerAccountServiceImpl.java"
-    source = FilePickerSource(tmp_path, PathMatcher([deep]), lambda: [])
+    source = FilePickerSource(DiskSource(tmp_path), PathMatcher([deep]), lambda: [])
     assert source.search("")[0].label.plain.startswith("CustomerAccountServiceImpl.java")
 
 
@@ -77,3 +81,12 @@ def test_preview_of_a_file_that_vanished_is_none(tmp_path):
     item = source.search("readme")[0]
     (tmp_path / "README.md").unlink()
     assert source.preview(item) is None
+
+
+def test_the_preview_comes_from_the_source():
+    class Source:
+        def document(self, path):
+            return Document(Path(path), ("from the source",), None, 0.0)
+
+    source = FilePickerSource(Source(), PathMatcher(["a.py"]), lambda: [])
+    assert source.preview(source.search("a")[0]).lines == ("from the source",)

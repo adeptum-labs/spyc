@@ -32,6 +32,7 @@ from spyc.core.fuzzy import PathMatcher
 from spyc.core.location import Location
 from spyc.core.picking import Choice
 from spyc.core.printable import printable
+from spyc.core.source import DiskSource, FileSource
 from spyc.deps.diagram import DENSE_BOXES, Painter, following, neighbour, status_text
 from spyc.deps.graph import FILE, DependencyGraph, Node
 from spyc.deps.layout import Drawing, layout
@@ -70,9 +71,11 @@ class GraphScreen(Screen[Location | None]):
 
     def __init__(self, root: Path, graph: DependencyGraph | None, progress: Callable[[], str],
                  path: str | None = None, failure: str | None = None,
-                 explain: Callable[[Member, tuple[str, ...]], None] | None = None) -> None:
+                 explain: Callable[[Member, tuple[str, ...]], None] | None = None,
+                 source: FileSource | None = None) -> None:
         super().__init__()
         self._root, self._graph, self._progress, self._path = root, graph, progress, path
+        self._source = source or DiskSource(root)
         self._failure, self._explain = failure, explain
         self._hierarchy: Hierarchy | None = None
         self._drawing: Drawing | None = None
@@ -230,7 +233,7 @@ class GraphScreen(Screen[Location | None]):
         elif len(paths) == 1:
             self.dismiss(Location(paths[0]))
         else:
-            self.app.push_screen(Picker(FilePickerSource(self._root, PathMatcher(paths), lambda: [])), self._opened)
+            self.app.push_screen(Picker(FilePickerSource(self._source, PathMatcher(paths), lambda: [])), self._opened)
 
     def _opened(self, choice: Choice | None) -> None:
         if choice is not None:

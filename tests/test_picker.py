@@ -29,6 +29,7 @@ from spyc.core.document import Document
 from spyc.core.file_picker import FilePickerSource
 from spyc.core.fuzzy import PathMatcher
 from spyc.core.picking import Choice, Item
+from spyc.core.source import DiskSource
 from spyc.screens.picker import Picker
 from spyc.widgets.code_view import CodeView
 from waiting import until
@@ -131,7 +132,7 @@ async def test_only_the_item_you_stop_on_is_previewed(monkeypatch):
 async def test_a_file_preview_shows_the_file_and_keeps_its_cursor_to_itself(tmp_path):
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "app.py").write_text("x = 1\n" * 50)
-    app = PickerApp(FilePickerSource(tmp_path, PathMatcher(["src/app.py"]), lambda: []))
+    app = PickerApp(FilePickerSource(DiskSource(tmp_path), PathMatcher(["src/app.py"]), lambda: []))
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("a", "p", "p", "colon", "4", "0")
         view = pilot.app.screen.query_one(CodeView)

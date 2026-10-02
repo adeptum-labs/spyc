@@ -29,6 +29,7 @@ from spyc.core.file_picker import FilePickerSource
 from spyc.core.fuzzy import PathMatcher
 from spyc.core.overview import build_overview
 from spyc.core.printable import printable
+from spyc.core.source import DiskSource
 from spyc.core.status import status_line
 from spyc.core.tree_model import TreeModel
 from spyc.widgets.file_tree import FileTree
@@ -74,7 +75,7 @@ async def test_file_names_in_the_tree_cannot_carry_escape_sequences():
 
 def test_file_names_in_the_finder_cannot_carry_escape_sequences(tmp_path):
     paths = [f"evil{ESCAPE}.py"]
-    item = FilePickerSource(tmp_path, PathMatcher(paths), lambda: []).search("evil")[0]
+    item = FilePickerSource(DiskSource(tmp_path), PathMatcher(paths), lambda: []).search("evil")[0]
     assert "\x1b" not in item.label.plain
 
 
