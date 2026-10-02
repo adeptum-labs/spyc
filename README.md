@@ -98,6 +98,8 @@ scroll to move.
 
 ## Dependencies
 
+![The dependency graph of a package, with web above storage above the files they share](docs/graph.svg)
+
 `G` draws the dependencies of the project as boxes in layers: what depends on something is above it, and a dashed line
 with a number, the files behind it, runs from each box to the ones it depends on. `Enter` goes into a box and shows its
 parts. Test files are left out until `t` shows them. Java, Kotlin, Python, JavaScript, TypeScript, TSX, Go, Rust, C and C++ are read. How each language is read and

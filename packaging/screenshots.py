@@ -52,6 +52,17 @@ FILES = {
         "    def total(self, percent_off: int = 0) -> Decimal:\n"
         "        net = sum((price * quantity for _, price, quantity in self._lines), Decimal(0))\n"
         "        return with_tax(discount(net, percent_off))\n"),
+    "src/orders/storage/__init__.py": "",
+    "src/orders/storage/carts.py": (
+        "from orders.cart import Cart\n\n_saved: dict[str, Cart] = {}\n\n\n"
+        "def save(owner: str, cart: Cart) -> None:\n    _saved[owner] = cart\n\n\n"
+        "def load(owner: str) -> Cart:\n    return _saved.get(owner, Cart())\n"),
+    "src/orders/web/__init__.py": "",
+    "src/orders/web/api.py": (
+        "from decimal import Decimal\n\nfrom orders.pricing import with_tax\nfrom orders.storage import carts\n\n\n"
+        "def add_to_cart(owner: str, name: str, price: Decimal) -> Decimal:\n    cart = carts.load(owner)\n"
+        "    cart.add(name, price)\n    carts.save(owner, cart)\n    return cart.total()\n\n\n"
+        "def quote(net: Decimal) -> Decimal:\n    return with_tax(net)\n"),
     "tests/test_cart.py": (
         "from decimal import Decimal\n\nfrom orders.cart import Cart\n\n\n"
         "def test_a_cart_totals_its_lines_with_tax():\n    cart = Cart()\n    cart.add('Pen', Decimal('10'), 2)\n"
@@ -68,6 +79,9 @@ HISTORY = [
     ("Ada Lovelace", "2026-01-12T10:00:00", "Start the order library", [".gitignore", "pyproject.toml", "README.md", "src/orders/__init__.py"]),
     ("Grace Hopper", "2026-02-03T14:30:00", "Price a cart with tax", ["src/orders/pricing.py", "src/orders/cart.py"]),
     ("Ada Lovelace", "2026-03-20T09:15:00", "Test the cart total", ["tests/test_cart.py"]),
+    ("Grace Hopper", "2026-04-08T16:45:00", "Serve carts over the web", [
+        "src/orders/storage/__init__.py", "src/orders/storage/carts.py",
+        "src/orders/web/__init__.py", "src/orders/web/api.py"]),
 ]
 
 
@@ -103,6 +117,9 @@ async def capture(root: Path, state: Path) -> None:
         await pilot.press("l")
         await settle(pilot)
         app.save_screenshot(filename="log.svg", path=str(DOCS))
+        await pilot.press("escape", "G")
+        await settle(pilot)
+        app.save_screenshot(filename="graph.svg", path=str(DOCS))
 
 
 async def settle(pilot) -> None:
