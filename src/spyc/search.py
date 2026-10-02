@@ -24,13 +24,14 @@ import os
 import re
 import shutil
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from spyc.core.cancellation import Cancellation
 from spyc.core.file_index import SKIPPED_DIRECTORIES
 from spyc.core.fileio import read_limited
+from spyc.core.source import FileSource
 
 MAX_HITS = 2000
 MAX_LINE = 500
@@ -60,11 +61,13 @@ class SearchResult:
 # pattern is refused because Python's re cannot be interrupted and one bad
 # pattern would freeze the program.
 def search_text(root: Path, paths: Sequence[str], query: str, *, regex: bool = False, whole_word: bool = False,
-                limit: int = MAX_HITS, ripgrep: bool | None = None,
+                limit: int = MAX_HITS, ripgrep: bool | None = None, source: FileSource | None = None,
                 cancellation: Cancellation | None = None) -> SearchResult:
     cancellation = cancellation or Cancellation()
     if not query or "\0" in query or cancellation.cancelled:
         return SearchResult()
+    if source is not None and source.commit is not None:
+        return _git_grep(source, query, regex, whole_word, limit, cancellation)
     if shutil.which("rg") is not None if ripgrep is None else ripgrep:
         return _ripgrep(root, query, regex, whole_word, limit, cancellation)
     if regex:
@@ -86,14 +89,35 @@ def _ripgrep(root: Path, query: str, regex: bool, whole_word: bool, limit: int,
     if not (root / ".git").exists():
         command += [argument for name in sorted(SKIPPED_DIRECTORIES) for argument in ("--glob", f"!{name}")]
     command += ["-e", query]
+    return _run_search(command, root, _hit_of, regex, limit, cancellation)
+
+
+# git grep takes the same smart case and the same literal or pattern choice as
+# ripgrep does, and reads the commit itself, so there is no working tree to search.
+def _git_grep(source: FileSource, query: str, regex: bool, whole_word: bool, limit: int,
+              cancellation: Cancellation) -> SearchResult:
+    command = ["git", "-C", str(source.root), "-c", "color.ui=never", "grep", "-z", "-n", "--column", "-I",
+               "-E" if regex else "-F"]
+    if not any(char.isupper() for char in query):
+        command.append("-i")
+    if whole_word:
+        command.append("-w")
+    command += ["-e", query, source.commit]
+    return _run_search(command, source.root, _grep_hit_of, regex, limit, cancellation)
+
+
+# Both tools end with status 1 when nothing matched and with a higher one when
+# they failed.
+def _run_search(command: list[str], cwd: Path, parse: Callable[[bytes], Hit | None], regex: bool, limit: int,
+                cancellation: Cancellation) -> SearchResult:
     result = SearchResult()
     try:
-        process = subprocess.Popen(command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError as error:
         return SearchResult(error=f"Search failed: {error}")
     cancellation.on_cancel(process.kill)
     for raw in process.stdout:
-        hit = _hit_of(raw)
+        hit = parse(raw)
         if hit is None:
             continue
         if len(result.hits) >= limit:
@@ -107,7 +131,7 @@ def _ripgrep(root: Path, query: str, regex: bool, whole_word: bool, limit: int,
     status = process.wait()
     if cancellation.cancelled:
         return SearchResult()
-    if status == 2 and not result.hits and error:
+    if status > 1 and not result.hits and error:
         result.error = f"{'Bad pattern' if regex else 'Search failed'}: {error.splitlines()[0]}"
     result.hits.sort(key=lambda hit: (hit.path, hit.line))
     return result
@@ -131,6 +155,16 @@ def _hit_of(raw: bytes) -> Hit | None:
     lines = _raw(data["lines"])
     column = len(lines[:data["submatches"][0]["start"]].decode("utf-8", errors="replace"))
     return Hit(os.fsdecode(_raw(data["path"])), data["line_number"], column, _short(lines.decode("utf-8", errors="replace")))
+
+
+def _grep_hit_of(raw: bytes) -> Hit | None:
+    fields = raw.rstrip(b"\n").split(b"\0", 3)
+    if len(fields) != 4 or not (fields[1].isdigit() and fields[2].isdigit()):
+        return None
+    head, number, column, text = fields
+    characters_before = len(text[:int(column) - 1].decode("utf-8", errors="replace"))
+    return Hit(os.fsdecode(head.partition(b":")[2]), int(number), characters_before,
+               _short(text.decode("utf-8", errors="replace")))
 
 
 def _scan(root: Path, paths: Sequence[str], query: str, whole_word: bool, limit: int,

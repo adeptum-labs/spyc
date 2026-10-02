@@ -75,7 +75,7 @@ class SearchSource:
         with self._lock:
             self._cancellation = cancellation
         result = search_text(self._source.root, self._paths(), query, regex=self.regex, whole_word=self.whole_word,
-                             limit=MAX_HITS, cancellation=cancellation)
+                             limit=MAX_HITS, source=self._source, cancellation=cancellation)
         self._last = (query, result)
         return [Item(hit.path, self._label(hit, query), hit.line, hit.column) for hit in result.hits]
 
