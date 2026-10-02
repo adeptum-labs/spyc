@@ -47,6 +47,10 @@ class Document:
         return "\n".join(self.lines)
 
 
+def oversized(path: Path, size: int, mtime: float) -> Document:
+    return Document(path, (), None, mtime, notice=f"File too large to show, {size:,} bytes")
+
+
 def load_document(path: Path) -> Document:
     status = path.stat()
     if stat.S_ISDIR(status.st_mode):
@@ -54,13 +58,16 @@ def load_document(path: Path) -> Document:
     if not stat.S_ISREG(status.st_mode):
         return Document(path, (), None, status.st_mtime, notice="Not a regular file")
     if status.st_size > FILE_LIMIT:
-        return Document(path, (), None, status.st_mtime, notice=f"File too large to show, {status.st_size:,} bytes")
-    data = path.read_bytes()
+        return oversized(path, status.st_size, status.st_mtime)
+    return document_of(path, path.read_bytes(), status.st_mtime)
+
+
+def document_of(path: Path, data: bytes, mtime: float) -> Document:
     if b"\0" in data[:BINARY_PROBE]:
-        return Document(path, (), None, status.st_mtime, notice=f"Binary file, {len(data):,} bytes")
+        return Document(path, (), None, mtime, notice=f"Binary file, {len(data):,} bytes")
     text = data.decode("utf-8-sig", errors="replace").replace("\r\n", "\n")
     lines = printable(text, keep_newlines=True).split("\n")
     if len(lines) > 1 and lines[-1] == "":
         lines.pop()
     plain = len(data) > HIGHLIGHT_LIMIT or any(len(line) > LONG_LINE for line in lines)
-    return Document(path, tuple(lines), detect_language(path.name, lines[0]), status.st_mtime, plain=plain)
+    return Document(path, tuple(lines), detect_language(path.name, lines[0]), mtime, plain=plain)
