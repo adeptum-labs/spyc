@@ -24,6 +24,7 @@ import time
 from textual.widgets import OptionList
 
 import spyc.app
+import spyc.core.source
 from repos import make_repo, write_files
 from spyc.app import SpycApp
 from spyc.state import StateStore
@@ -79,19 +80,23 @@ async def test_text_that_looks_like_markup_is_shown_as_typed(project, tmp_path, 
 async def test_a_stale_index_never_replaces_a_newer_one(tmp_path, monkeypatch):
     repo = make_repo(tmp_path / "repo", {"a.py": "x = 1\n", ".gitignore": "build/\n"})
     write_files(repo, {"build/out.o": ""})
-    real = spyc.app.build_index
+    real = spyc.core.source.build_index
+
+    listed = []
 
     def slow_when_ignored_files_are_hidden(root, show_ignored=False, limit=200_000):
+        listed.append(show_ignored)
         if not show_ignored:
             time.sleep(0.6)
         return real(root, show_ignored, limit)
 
-    monkeypatch.setattr(spyc.app, "build_index", slow_when_ignored_files_are_hidden)
+    monkeypatch.setattr(spyc.core.source, "build_index", slow_when_ignored_files_are_hidden)
     app = make_app(repo, tmp_path)
     async with app.run_test(size=SIZE) as pilot:
         await pilot.pause()
         await pilot.press("full_stop")
         await pilot.pause(1.2)
+        assert listed == [False, True]
         assert "build" in top_level(app)
 
 
