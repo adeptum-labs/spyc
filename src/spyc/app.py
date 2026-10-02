@@ -652,7 +652,7 @@ class SpycApp(App):
 
     def action_show_changes(self) -> None:
         if self._in_git():
-            self.push_screen(ChangesScreen(self.git, self._untracked_files), self._location_chosen)
+            self.push_screen(ChangesScreen(lambda: self.git.working_diff(self._untracked_files())), self._location_chosen)
 
     def action_toggle_blame(self) -> None:
         code = self._viewing()

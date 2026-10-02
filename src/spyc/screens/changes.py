@@ -18,7 +18,7 @@
 # Contact: info@adeptum.se
 
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 
 from textual import work
 from textual.app import ComposeResult
@@ -29,21 +29,20 @@ from textual.widgets import Footer, Header
 from spyc.core.location import Location
 from spyc.git.diff import Diff
 from spyc.git.diff_rows import DiffRow, rows_of
-from spyc.git.repository import Git
 from spyc.widgets.diff_view import DiffView
 
 
-# Everything that differs from the last commit, staged or not, and the files
-# git does not track yet, as one diff to read through.
+# A diff to read through: what differs in the working tree from the last commit,
+# or what a branch changed. It is loaded from a worker thread.
 class ChangesScreen(Screen[Location | None]):
     BINDINGS = [
         Binding("escape,q", "close", "Back"),
         Binding("R", "reload", "Reload"),
     ]
 
-    def __init__(self, git: Git, untracked: Callable[[], Sequence[str]]) -> None:
+    def __init__(self, load: Callable[[], Diff | None], title: str = "Changes") -> None:
         super().__init__()
-        self._git, self._untracked = git, untracked
+        self._load, self._title = load, title
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -51,16 +50,16 @@ class ChangesScreen(Screen[Location | None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.sub_title = "Changes"
+        self.sub_title = self._title
         self.query_one(DiffView).focus()
         self.action_reload()
 
     def action_reload(self) -> None:
-        self._read(list(self._untracked()))
+        self._read()
 
     @work(thread=True, exclusive=True, group="changes", exit_on_error=False)
-    def _read(self, untracked: list[str]) -> None:
-        self.app.call_from_thread(self._ready, self._git.working_diff(untracked))
+    def _read(self) -> None:
+        self.app.call_from_thread(self._ready, self._load())
 
     def _ready(self, diff: Diff | None) -> None:
         if diff is None:
@@ -69,7 +68,7 @@ class ChangesScreen(Screen[Location | None]):
             rows = [DiffRow("info", "No changes")]
         else:
             rows = rows_of(None, diff)
-            self.sub_title = (f"Changes: {len(diff.files)} files, "
+            self.sub_title = (f"{self._title}: {len(diff.files)} files, "
                               f"+{sum(file.additions for file in diff.files)} -{sum(file.deletions for file in diff.files)}")
         self.query_one(DiffView).show_rows(rows)
 

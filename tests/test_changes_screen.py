@@ -28,12 +28,14 @@ from spyc.widgets.diff_view import DiffView
 
 
 class ChangesApp(App):
-    def __init__(self, repo, untracked=()):
+    def __init__(self, repo, untracked=(), load=None, title="Changes"):
         super().__init__()
         self.git, self.untracked, self.result = Git(repo), list(untracked), "unset"
+        self._load, self._title = load, title
 
     async def on_mount(self):
-        await self.push_screen(ChangesScreen(self.git, lambda: self.untracked), self.done)
+        load = self._load or (lambda: self.git.working_diff(self.untracked))
+        await self.push_screen(ChangesScreen(load, self._title), self.done)
 
     def done(self, result):
         self.result = result
@@ -87,6 +89,19 @@ async def test_escape_closes_and_r_reads_the_changes_again(git_repo):
         await pilot.press("escape")
         await pilot.pause()
     assert app.result is None
+
+
+async def test_any_diff_can_be_shown_with_its_own_title(git_repo):
+    git(git_repo, "checkout", "-q", "-b", "feature")
+    write_files(git_repo, {"added.py": "x = 1\n"})
+    git(git_repo, "add", ".")
+    git(git_repo, "commit", "-q", "-m", "Add a file")
+    base = git(git_repo, "rev-parse", "HEAD~1").strip()
+    app = ChangesApp(git_repo, load=lambda: Git(git_repo).branch_diff(base, "feature"), title="feature vs master")
+    async with app.run_test(size=(120, 40)) as pilot:
+        await settle(pilot)
+        assert any("added.py" in row.text for row in rows(pilot) if row.kind == "file")
+        assert pilot.app.screen.sub_title.startswith("feature vs master: 1 files")
 
 
 async def test_outside_a_repository_the_screen_says_so(tmp_path):
