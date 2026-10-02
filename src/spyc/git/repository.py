@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from spyc.git.blame import BlameLine, parse_blame
+from spyc.git.branches import BRANCH_FORMAT, Branch, parse_branches
 from spyc.git.changes import LineChanges, parse_hunks
 from spyc.git.diff import DIFF_LINE_LIMIT, Diff, FileDiff, diff_of_new_file, parse_diff
 from spyc.git.log import LOG_FORMAT, Commit, parse_log
@@ -94,13 +95,35 @@ class Git:
         commits = self.log(limit=1)
         return GitSummary(self.branch(), len(status), commits[0] if commits else None)
 
-    def blame(self, path: str) -> list[BlameLine] | None:
-        output = self.run("blame", "--porcelain", "--", path)
+    def blame(self, path: str, revision: str | None = None) -> list[BlameLine] | None:
+        base, target = ["blame", "--porcelain"], [*([revision] if revision else []), "--", path]
+        output = self.run(*base, *target)
         if output is None:
             # A global blame.ignoreRevsFile that names a file this repository
             # does not have makes blame fail outright.
-            output = self.run("blame", "--porcelain", "--no-ignore-revs-file", "--", path)
+            output = self.run(*base, "--no-ignore-revs-file", *target)
         return None if output is None else parse_blame(output)
+
+    def branches(self) -> list[Branch] | None:
+        output = self.run("for-each-ref", "--sort=-committerdate", f"--format={BRANCH_FORMAT}", "refs/heads",
+                          "refs/remotes")
+        return None if output is None else parse_branches(output)
+
+    def origin_head(self) -> str | None:
+        name = self.run("symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD")
+        return name.strip() if name else None
+
+    def ahead_behind(self, base: str, commit: str) -> tuple[int, int] | None:
+        output = self.run("rev-list", "--left-right", "--count", f"{base}...{commit}")
+        try:
+            behind, ahead = (int(part) for part in (output or "").split())
+        except ValueError:
+            return None
+        return ahead, behind
+
+    def branch_diff(self, base: str, commit: str) -> Diff | None:
+        output = self.run("diff", "-M", *DIFF_OPTIONS, f"{base}...{commit}")
+        return None if output is None else parse_diff(output)
 
     def commit_detail(self, commit: str) -> CommitDetail | None:
         message = self.run("show", "-s", "--format=%B", commit)
