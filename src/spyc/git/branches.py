@@ -43,6 +43,12 @@ class Branch:
     current: bool
 
 
+@dataclass(frozen=True)
+class Comparison:
+    branch: Branch
+    base: Branch
+
+
 def parse_branches(output: str) -> list[Branch]:
     branches = []
     for entry in filter(None, output.split("\0")):

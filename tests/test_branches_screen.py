@@ -25,7 +25,7 @@ from textual.widgets import OptionList
 from repos import git, make_repo, write_files
 from spyc.core.location import Location
 from spyc.git.repository import Git
-from spyc.screens.branches import BranchesScreen, BranchPick
+from spyc.screens.branches import BranchesScreen
 from spyc.screens.changes import ChangesScreen
 from spyc.screens.log import LogScreen
 from waiting import until
@@ -92,12 +92,13 @@ async def test_v_chooses_a_branch_and_the_first_row_chooses_the_working_tree(rep
         await pilot.press("v")
         await pilot.pause()
         assert app.result.branch.name == "feature/x" and app.result.location is None
+        assert app.result.base.name == "master"
     app = BranchesApp(repo)
     async with app.run_test(size=(120, 30)) as pilot:
         await ready(pilot)
         await pilot.press("v")
         await pilot.pause()
-        assert app.result == BranchPick(None)
+        assert app.result.branch is None and app.result.location is None
 
 
 async def test_enter_opens_the_log_of_the_branch(repo):
@@ -107,6 +108,16 @@ async def test_enter_opens_the_log_of_the_branch(repo):
         await pilot.press("enter")
         await ready(pilot)
         assert isinstance(pilot.app.screen, LogScreen)
+        assert pilot.app.screen.sub_title == "Log of feature/x compared with master"
+
+
+async def test_the_log_of_the_base_is_not_compared_with_itself(repo):
+    async with BranchesApp(repo).run_test(size=(120, 30)) as pilot:
+        await ready(pilot)
+        select(pilot, "master")
+        await pilot.press("enter")
+        await ready(pilot)
+        assert pilot.app.screen.sub_title.startswith("Log from")
 
 
 async def test_d_opens_the_diff_against_the_base_and_not_on_the_base_itself(repo):

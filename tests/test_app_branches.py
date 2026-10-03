@@ -138,8 +138,23 @@ async def test_the_log_of_the_view_starts_at_the_branch(repo, tmp_path):
         await ready(pilot)
         assert isinstance(app.screen, LogScreen)
         options = app.screen.query_one(OptionList)
-        await until(pilot, lambda: options.option_count > 0)
-        assert "Work on feature" in options.get_option_at_index(0).prompt.plain
+        await until(pilot, lambda: options.option_count > 1)
+        assert options.get_option_at_index(0).prompt.plain == "Only on feature (↑1)"
+        assert "Work on feature" in options.get_option_at_index(1).prompt.plain
+
+
+async def test_the_log_after_leaving_the_branch_is_not_compared(repo, tmp_path):
+    app = make_app(repo, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        await view_feature(pilot, app)
+        await pilot.press("B")
+        await ready(pilot)
+        await pilot.press("v")
+        await until(pilot, lambda: app.source.editable)
+        await pilot.press("l")
+        await ready(pilot)
+        assert app.screen.sub_title == "Log"
 
 
 async def test_a_file_chosen_in_a_branch_diff_opens_in_the_branch(repo, tmp_path):

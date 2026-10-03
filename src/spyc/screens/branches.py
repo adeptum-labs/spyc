@@ -32,7 +32,7 @@ from textual.widgets.option_list import Option
 from spyc.core.location import Location
 from spyc.core.printable import printable
 from spyc.core.timeago import age
-from spyc.git.branches import Branch, default_base
+from spyc.git.branches import Branch, Comparison, default_base
 from spyc.git.repository import Git
 from spyc.screens.changes import ChangesScreen
 from spyc.screens.log import LogScreen
@@ -47,6 +47,7 @@ PENDING = "…"
 class BranchPick:
     branch: Branch | None
     location: Location | None = None
+    base: Branch | None = None
 
 
 # The branches of the repository, newest first, local ones before remote ones,
@@ -164,7 +165,9 @@ class BranchesScreen(Screen[BranchPick | None]):
         if branch is None:
             self.dismiss(BranchPick(None))
         else:
-            self.app.push_screen(LogScreen(self._git, focus=branch.commit), lambda place: self._opened(branch, place))
+            comparison = Comparison(branch, self._base) if self._base and branch != self._base else None
+            log = LogScreen(self._git, focus=branch.commit, comparison=comparison)
+            self.app.push_screen(log, lambda place: self._opened(branch, place))
 
     def action_diff(self) -> None:
         branch, base = self._selected(), self._base
@@ -178,10 +181,10 @@ class BranchesScreen(Screen[BranchPick | None]):
 
     def _opened(self, branch: Branch, place: Location | None) -> None:
         if place is not None:
-            self.dismiss(BranchPick(branch, place))
+            self.dismiss(BranchPick(branch, place, self._base))
 
     def action_view(self) -> None:
-        self.dismiss(BranchPick(self._selected()))
+        self.dismiss(BranchPick(self._selected(), base=self._base))
 
     def action_filter(self) -> None:
         self.app.push_screen(Prompt("Filter branches by name", self._filter), self._filtered)

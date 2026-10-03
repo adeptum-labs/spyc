@@ -90,12 +90,11 @@ class Git:
         return None if output is None else parse_status(output)
 
     def log(self, limit: int = 200, skip: int = 0, path: str | None = None, grep: str | None = None,
-            revision: str | None = None) -> list[Commit] | None:
+            revisions: Sequence[str] = ()) -> list[Commit] | None:
         arguments = ["log", "-z", f"--format={LOG_FORMAT}", f"--max-count={limit}", f"--skip={skip}"]
         if grep:
             arguments += ["-i", "--fixed-strings", f"--grep={grep}"]
-        if revision:
-            arguments.append(revision)
+        arguments += revisions
         if path:
             arguments += ["--follow", "--", path]
         output = self.run(*arguments)
@@ -141,6 +140,10 @@ class Git:
         except ValueError:
             return None
         return ahead, behind
+
+    # Unrelated histories have none, and git then fails without a message.
+    def merge_bases(self, first: str, second: str) -> list[str]:
+        return (self.run("merge-base", "--all", first, second) or "").split()
 
     def branch_diff(self, base: str, commit: str) -> Diff | None:
         output = self.run("diff", "-M", *DIFF_OPTIONS, f"{base}...{commit}")

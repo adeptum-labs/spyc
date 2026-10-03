@@ -55,7 +55,7 @@ from spyc.deps.graph import DependencyGraph, Stopped
 from spyc.deps.scopes import Member
 from spyc.editor import editor_command
 from spyc.git.blame import BlameLine
-from spyc.git.branches import Branch
+from spyc.git.branches import Branch, Comparison
 from spyc.git.changes import LineChanges
 from spyc.git.ref_source import GitRefSource
 from spyc.git.repository import Git
@@ -173,6 +173,7 @@ class SpycApp(App):
         self.source: FileSource = self._disk
         self._disk_symbols = SymbolIndex(project_root, default_cache_path(project_root), self._disk)
         self._symbols = self._disk_symbols
+        self._comparison: Comparison | None = None
         self._about = About(self._symbols, lambda: self._paths, lambda: self._graph)
         self._answers = AnswerCache(cache_path(project_root, "claude"))
         self._claude: Claude | None = None
@@ -656,7 +657,8 @@ class SpycApp(App):
 
     def action_show_log(self) -> None:
         if self._in_git():
-            self.push_screen(LogScreen(self.git, focus=self.source.commit), self._location_chosen)
+            self.push_screen(LogScreen(self.git, focus=self.source.commit, comparison=self._comparison),
+                             self._location_chosen)
 
     def action_show_file_log(self) -> None:
         if not self._in_git():
@@ -683,22 +685,24 @@ class SpycApp(App):
             return
         if pick.branch is None:
             self._leave_branch()
-        elif not self._enter_branch(pick.branch):
+        elif not self._enter_branch(pick.branch, pick.base):
             return
         self._open_after_listing = pick.location
 
     # The commit is fixed when the branch is chosen, so a branch that moves, or
     # is deleted, does not change what is on the screen.
-    def _enter_branch(self, branch: Branch) -> bool:
+    def _enter_branch(self, branch: Branch, base: Branch | None) -> bool:
         if self.git.fetches_missing_blobs():
             self.notify("This is a partial clone, and this git would fetch the missing files from the remote while "
                         "a branch is read; use git 2.44 or newer, or a full clone", severity="warning")
             return False
         source = GitRefSource(self.git, branch.commit, branch.name)
         self._switch_source(source, SymbolIndex(self.project_root, ref_cache_path(self.project_root), source))
+        self._comparison = Comparison(branch, base) if base and base != branch else None
         return True
 
     def _leave_branch(self) -> None:
+        self._comparison = None
         self._switch_source(self._disk, self._disk_symbols)
         self._refresh_git()
 

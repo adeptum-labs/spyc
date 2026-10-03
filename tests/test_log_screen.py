@@ -24,18 +24,19 @@ from textual.widgets import OptionList
 import spyc.screens.log
 from repos import git, write_files
 from spyc.core.location import Location
+from spyc.git.branches import Comparison
 from spyc.git.repository import Git
 from spyc.screens.log import LogScreen
 from spyc.widgets.diff_view import DiffView
 
 
 class LogApp(App):
-    def __init__(self, repo, path=None, focus=None):
+    def __init__(self, repo, path=None, focus=None, comparison=None):
         super().__init__()
-        self.git, self.path, self.focus, self.result = Git(repo), path, focus, "unset"
+        self.git, self.path, self.focus, self.comparison, self.result = Git(repo), path, focus, comparison, "unset"
 
     async def on_mount(self):
-        await self.push_screen(LogScreen(self.git, self.path, self.focus), self.done)
+        await self.push_screen(LogScreen(self.git, self.path, self.focus, self.comparison), self.done)
 
     def done(self, result):
         self.result = result
@@ -65,6 +66,84 @@ def rows(pilot):
 
 def detail(pilot):
     return pilot.app.screen.query_one(DiffView).rows
+
+
+# master: Initial commit, Add a, Change a, then Master moved; feature forks
+# after Change a with Feature one and Feature two.
+def forked(repo):
+    history(repo)
+    git(repo, "branch", "-m", "master")
+    git(repo, "checkout", "-q", "-b", "feature")
+    commit(repo, "f.txt", "1", "Feature one")
+    commit(repo, "f.txt", "2", "Feature two")
+    git(repo, "checkout", "-q", "master")
+    commit(repo, "m.txt", "m", "Master moved")
+    return {branch.name: branch for branch in Git(repo).branches()}
+
+
+def comparison_of(repo, name):
+    branches = forked(repo)
+    return Comparison(branches[name], branches["master"])
+
+
+async def test_a_branch_log_shows_its_own_commits_then_the_base_s_then_the_shared_history(git_repo):
+    async with LogApp(git_repo, comparison=comparison_of(git_repo, "feature")).run_test(size=(140, 40)) as pilot:
+        await settle(pilot)
+        listed = rows(pilot)
+        assert listed[0] == "Only on feature (↑2)" and listed[3] == "Only on master (↓1)"
+        assert listed[1].startswith("▌") and "Feature two" in listed[1] and "Feature one" in listed[2]
+        assert listed[4].startswith("▐") and "Master moved" in listed[4]
+        assert listed[5].startswith("── shared")
+        assert ["Change a" in listed[6], "Add a" in listed[7], "Initial commit" in listed[8]] == [True] * 3
+        assert len(listed) == 9
+        assert pilot.app.screen.sub_title == "Log of feature compared with master"
+
+
+async def test_the_cursor_starts_on_the_first_commit_and_steps_over_the_titles(git_repo):
+    async with LogApp(git_repo, comparison=comparison_of(git_repo, "feature")).run_test(size=(140, 40)) as pilot:
+        await settle(pilot)
+        options = pilot.app.screen.query_one(OptionList)
+        assert options.highlighted == 1 and detail(pilot)[0].text == "Feature two"
+        await pilot.press("down", "down")
+        await settle(pilot)
+        assert options.highlighted == 4 and detail(pilot)[0].text == "Master moved"
+        await pilot.press("down")
+        assert options.highlighted == 6
+
+
+async def test_a_side_with_nothing_of_its_own_has_no_title(git_repo):
+    forked(git_repo)
+    git(git_repo, "branch", "old", "master~1")
+    branches = {branch.name: branch for branch in Git(git_repo).branches()}
+    comparison = Comparison(branches["old"], branches["master"])
+    async with LogApp(git_repo, comparison=comparison).run_test(size=(140, 40)) as pilot:
+        await settle(pilot)
+        listed = rows(pilot)
+        assert not any("Only on old" in row for row in listed)
+        assert listed[0] == "Only on master (↓1)" and "Master moved" in listed[1]
+
+
+async def test_a_filter_leaves_out_the_title_of_a_side_it_empties(git_repo):
+    async with LogApp(git_repo, comparison=comparison_of(git_repo, "feature")).run_test(size=(140, 40)) as pilot:
+        await settle(pilot)
+        await pilot.press("slash")
+        await pilot.pause()
+        await pilot.press(*"Master", "enter")
+        await settle(pilot)
+        listed = rows(pilot)
+        assert len(listed) == 2 and listed[0] == "Only on master (↓1)" and "Master moved" in listed[1]
+
+
+async def test_the_sides_are_read_in_pages_one_after_another(git_repo, monkeypatch):
+    monkeypatch.setattr(spyc.screens.log, "PAGE_SIZE", 2)
+    monkeypatch.setattr(spyc.screens.log, "LOAD_AHEAD", 0)
+    async with LogApp(git_repo, comparison=comparison_of(git_repo, "feature")).run_test(size=(140, 40)) as pilot:
+        await settle(pilot)
+        assert len(rows(pilot)) == 3
+        for _ in range(4):
+            await pilot.press("down")
+            await settle(pilot)
+        assert len(rows(pilot)) == 9 and rows(pilot)[5].startswith("── shared")
 
 
 async def test_commits_are_listed_newest_first(git_repo):

@@ -96,4 +96,32 @@ def test_the_log_can_start_at_a_given_commit(git_repo):
     commit(git_repo, "a.txt", "a", "Add a")
     commit(git_repo, "b.txt", "b", "Add b")
     middle = Git(git_repo).log()[1].hash
-    assert [entry.subject for entry in Git(git_repo).log(revision=middle)] == ["Add a", "Initial commit"]
+    assert [entry.subject for entry in Git(git_repo).log(revisions=[middle])] == ["Add a", "Initial commit"]
+
+
+def forked(repo):
+    git(repo, "branch", "-m", "master")
+    git(repo, "checkout", "-q", "-b", "feature")
+    commit(repo, "f.txt", "f", "Add f")
+    git(repo, "checkout", "-q", "master")
+    commit(repo, "m.txt", "m", "Add m")
+    return Git(repo).log(revisions=["feature"])[0].hash, Git(repo).log()[0].hash
+
+
+def test_a_range_lists_only_the_commits_one_side_lacks(git_repo):
+    feature, master = forked(git_repo)
+    assert [entry.subject for entry in Git(git_repo).log(revisions=[f"{master}..{feature}"])] == ["Add f"]
+    assert [entry.subject for entry in Git(git_repo).log(revisions=[f"{feature}..{master}"])] == ["Add m"]
+
+
+def test_the_merge_base_is_where_two_commits_fork(git_repo):
+    feature, master = forked(git_repo)
+    fork = Git(git_repo).log(revisions=[master])[1].hash
+    assert Git(git_repo).merge_bases(feature, master) == [fork]
+
+
+def test_unrelated_histories_have_no_merge_base(git_repo):
+    first = Git(git_repo).log()[0].hash
+    git(git_repo, "checkout", "-q", "--orphan", "other")
+    commit(git_repo, "o.txt", "o", "Unrelated")
+    assert Git(git_repo).merge_bases(first, Git(git_repo).log()[0].hash) == []
