@@ -79,8 +79,8 @@ def _label(commit: Commit, now: float, marker: tuple[str, str]) -> Text:
 # The commits of the repository, or of one file, newest first, with the
 # highlighted commit's message and diff beside them. Enter on a line of the
 # diff closes the log and gives the file and line to open. The log of a branch
-# compared with its base lists what only the branch has, then what only the
-# base has, then the history they share.
+# compared with its base lists what only the branch has; the whole history adds
+# what only the base has, then the history they share.
 class LogScreen(Screen[Location | None]):
     DEFAULT_CSS = """
     LogScreen Horizontal { height: 1fr; }
@@ -91,6 +91,7 @@ class LogScreen(Screen[Location | None]):
     BINDINGS = [
         Binding("escape,q", "close", "Back"),
         Binding("slash", "filter", "Filter"),
+        Binding("h", "toggle_history", "History"),
     ]
 
     def __init__(self, git: Git, path: str | None = None, focus: str | None = None,
@@ -101,6 +102,7 @@ class LogScreen(Screen[Location | None]):
         self._sections = None if comparison else [Section(None, NO_MARKER, (self._revision,) if self._revision else ())]
         self._rows: list[Commit | None] = []
         self._section = self._skip = 0
+        self._whole = False
         self._grep = ""
         self._generation = 0
         self._loading = False
@@ -147,9 +149,11 @@ class LogScreen(Screen[Location | None]):
     def _compared(self) -> list[Section]:
         branch, base = self._comparison.branch, self._comparison.base
         ahead, behind = self._git.ahead_behind(base.commit, branch.commit) or (None, None)
+        own = _side(branch.name, "↑", ahead, AHEAD_MARKER, f"{base.commit}..{branch.commit}")
+        if not self._whole:
+            return own
         merge_bases = self._git.merge_bases(base.commit, branch.commit)
-        return [*_side(branch.name, "↑", ahead, AHEAD_MARKER, f"{base.commit}..{branch.commit}"),
-                *_side(base.name, "↓", behind, BEHIND_MARKER, f"{branch.commit}..{base.commit}"),
+        return [*own, *_side(base.name, "↓", behind, BEHIND_MARKER, f"{branch.commit}..{base.commit}"),
                 *([Section(SHARED_TITLE, SHARED_MARKER, tuple(merge_bases))] if merge_bases else [])]
 
     # A title comes with the first commit of its section, so a section the
@@ -181,7 +185,14 @@ class LogScreen(Screen[Location | None]):
         if len(commits) < PAGE_SIZE:
             self._section, self._skip = self._section + 1, 0
             self._exhausted = self._section >= len(sections)
+            if self._exhausted and not self._rows and self._comparison and not self._whole:
+                options.add_option(Option(self._nothing_of_its_own(), disabled=True))
+                self._rows.append(None)
             self._load_page()
+
+    def _nothing_of_its_own(self) -> Text:
+        filtered = " match the filter" if self._grep else ""
+        return Text(f"No commits only on {printable(self._comparison.branch.name)}{filtered}", style="dim")
 
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
         index = event.option_index
@@ -244,6 +255,13 @@ class LogScreen(Screen[Location | None]):
         if value is not None:
             self._grep = value.strip()
             self._restart()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        return self._comparison is not None if action == "toggle_history" else True
+
+    def action_toggle_history(self) -> None:
+        self._whole, self._sections = not self._whole, None
+        self._restart()
 
     def action_close(self) -> None:
         self.dismiss(None)

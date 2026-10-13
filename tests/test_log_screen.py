@@ -86,9 +86,24 @@ def comparison_of(repo, name):
     return Comparison(branches[name], branches["master"])
 
 
-async def test_a_branch_log_shows_its_own_commits_then_the_base_s_then_the_shared_history(git_repo):
+async def whole_history(pilot):
+    await pilot.press("h")
+    await settle(pilot)
+
+
+async def test_a_branch_log_shows_only_its_own_commits(git_repo):
     async with LogApp(git_repo, comparison=comparison_of(git_repo, "feature")).run_test(size=(140, 40)) as pilot:
         await settle(pilot)
+        listed = rows(pilot)
+        assert len(listed) == 3 and listed[0] == "Only on feature (↑2)"
+        assert listed[1].startswith("▌") and "Feature two" in listed[1] and "Feature one" in listed[2]
+        assert pilot.app.screen.sub_title == "Log of feature compared with master"
+
+
+async def test_h_adds_the_base_s_commits_and_the_shared_history_and_takes_them_away_again(git_repo):
+    async with LogApp(git_repo, comparison=comparison_of(git_repo, "feature")).run_test(size=(140, 40)) as pilot:
+        await settle(pilot)
+        await whole_history(pilot)
         listed = rows(pilot)
         assert listed[0] == "Only on feature (↑2)" and listed[3] == "Only on master (↓1)"
         assert listed[1].startswith("▌") and "Feature two" in listed[1] and "Feature one" in listed[2]
@@ -96,12 +111,23 @@ async def test_a_branch_log_shows_its_own_commits_then_the_base_s_then_the_share
         assert listed[5].startswith("── shared")
         assert ["Change a" in listed[6], "Add a" in listed[7], "Initial commit" in listed[8]] == [True] * 3
         assert len(listed) == 9
-        assert pilot.app.screen.sub_title == "Log of feature compared with master"
+        await whole_history(pilot)
+        assert len(rows(pilot)) == 3
+
+
+async def test_h_does_nothing_in_a_log_that_is_not_compared(git_repo):
+    history(git_repo)
+    async with LogApp(git_repo).run_test(size=(140, 40)) as pilot:
+        await settle(pilot)
+        listed = rows(pilot)
+        await whole_history(pilot)
+        assert rows(pilot) == listed and len(listed) == 3
 
 
 async def test_the_cursor_starts_on_the_first_commit_and_steps_over_the_titles(git_repo):
     async with LogApp(git_repo, comparison=comparison_of(git_repo, "feature")).run_test(size=(140, 40)) as pilot:
         await settle(pilot)
+        await whole_history(pilot)
         options = pilot.app.screen.query_one(OptionList)
         assert options.highlighted == 1 and detail(pilot)[0].text == "Feature two"
         await pilot.press("down", "down")
@@ -118,14 +144,27 @@ async def test_a_side_with_nothing_of_its_own_has_no_title(git_repo):
     comparison = Comparison(branches["old"], branches["master"])
     async with LogApp(git_repo, comparison=comparison).run_test(size=(140, 40)) as pilot:
         await settle(pilot)
+        assert rows(pilot) == ["No commits only on old"]
+        await whole_history(pilot)
         listed = rows(pilot)
         assert not any("Only on old" in row for row in listed)
         assert listed[0] == "Only on master (↓1)" and "Master moved" in listed[1]
 
 
+async def test_a_filter_that_empties_the_branch_s_own_commits_says_so(git_repo):
+    async with LogApp(git_repo, comparison=comparison_of(git_repo, "feature")).run_test(size=(140, 40)) as pilot:
+        await settle(pilot)
+        await pilot.press("slash")
+        await pilot.pause()
+        await pilot.press(*"Master", "enter")
+        await settle(pilot)
+        assert rows(pilot) == ["No commits only on feature match the filter"]
+
+
 async def test_a_filter_leaves_out_the_title_of_a_side_it_empties(git_repo):
     async with LogApp(git_repo, comparison=comparison_of(git_repo, "feature")).run_test(size=(140, 40)) as pilot:
         await settle(pilot)
+        await whole_history(pilot)
         await pilot.press("slash")
         await pilot.pause()
         await pilot.press(*"Master", "enter")
@@ -139,6 +178,7 @@ async def test_the_sides_are_read_in_pages_one_after_another(git_repo, monkeypat
     monkeypatch.setattr(spyc.screens.log, "LOAD_AHEAD", 0)
     async with LogApp(git_repo, comparison=comparison_of(git_repo, "feature")).run_test(size=(140, 40)) as pilot:
         await settle(pilot)
+        await whole_history(pilot)
         assert len(rows(pilot)) == 3
         for _ in range(4):
             await pilot.press("down")
