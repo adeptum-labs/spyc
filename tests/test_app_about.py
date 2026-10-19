@@ -27,7 +27,7 @@ from fake_claude import install_claude, needs_sh, result, text_delta, tool_use
 from repos import write_files
 from spyc.app import SpycApp
 from spyc.assist.cli import find_claude
-from spyc.screens.explain import ExplainScreen
+from spyc.screens.explain import REDRAW_INTERVAL, ExplainScreen
 from spyc.screens.graph import GraphScreen
 from spyc.screens.scope_menu import ScopeMenu
 from spyc.state import StateStore
@@ -87,6 +87,16 @@ async def test_a_on_a_directory_shows_what_claude_answered(tmp_path, monkeypatch
         assert "sonnet" in status(app)
         assert "directory `tools`" in fake.prompt and "- tools/one.py" in fake.prompt
         assert "Depends on: tools/two.py" not in fake.prompt and "Defines: class Tool (tools/one.py:3)" in fake.prompt
+
+
+async def test_the_answer_stays_when_a_redraw_of_the_text_before_it_was_still_due(tmp_path, monkeypatch):
+    app, _ = make_app(tmp_path, monkeypatch)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        await ask_about_directory(pilot)
+        await answered(pilot)
+        await pilot.pause(REDRAW_INTERVAL * 2)
+        assert body(app) == "A **tool** collection."
 
 
 async def test_the_graph_facts_go_into_the_question(tmp_path, monkeypatch):

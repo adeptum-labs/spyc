@@ -92,6 +92,7 @@ class ExplainScreen(Screen[None]):
 
     def _begin(self, fresh: bool) -> None:
         self._cancellation.cancel()
+        self._stop_redraw()
         self._generation += 1
         self._cancellation = Cancellation()
         self._started, self._detail, self._finished_note, self._live = time.monotonic(), "", None, ""
@@ -146,17 +147,25 @@ class ExplainScreen(Screen[None]):
         self._redraw_timer = None
         await self._show_markdown(self._live)
 
+    # A redraw still due would put the text streamed so far back over what replaced it.
+    def _stop_redraw(self) -> None:
+        if self._redraw_timer is not None:
+            self._redraw_timer.stop()
+            self._redraw_timer = None
+
     # Text written before a tool is used is Claude thinking aloud, and is not part of the answer.
     async def _reading(self, detail: str) -> None:
         self._detail, self._live = detail, ""
         self._show_status()
 
     async def _done(self, text: str) -> None:
+        self._stop_redraw()
         self._finished_note = f"{self._claude.model} · {time.monotonic() - self._started:.0f} s"
         self._show_status()
         await self._show_markdown(text)
 
     async def _failed(self, message: str) -> None:
+        self._stop_redraw()
         self._finished_note = "failed · r tries again"
         self._show_status()
         await self._show_markdown(f"Claude could not answer.\n\n> {printable(message)}")
