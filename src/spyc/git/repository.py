@@ -23,7 +23,7 @@ import re
 import stat
 import subprocess
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from spyc.git.blame import BlameLine, parse_blame
@@ -127,7 +127,19 @@ class Git:
     def branches(self) -> list[Branch] | None:
         output = self.run("for-each-ref", "--sort=-committerdate", f"--format={BRANCH_FORMAT}", "refs/heads",
                           "refs/remotes")
-        return None if output is None else parse_branches(output)
+        if output is None:
+            return None
+        branches = parse_branches(output)
+        names = self.mailmapped_names({branch.author for branch in branches})
+        return [replace(branch, author=names.get(branch.author, branch.author)) for branch in branches]
+
+    # for-each-ref only learned to apply .mailmap in git 2.43, so each
+    # "Name <email>" goes through check-mailmap instead.
+    def mailmapped_names(self, contacts: set[str]) -> dict[str, str]:
+        ordered = sorted(contacts)
+        output = self.run("check-mailmap", *ordered) if ordered else None
+        mapped = (output or "").splitlines()
+        return {contact: line.rpartition(" <")[0] or contact for contact, line in zip(ordered, mapped)}
 
     def origin_head(self) -> str | None:
         name = self.run("symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD")

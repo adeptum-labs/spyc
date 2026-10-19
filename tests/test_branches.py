@@ -86,6 +86,17 @@ def test_the_repository_lists_its_branches_with_the_current_one_marked(repo):
     assert branches["feature/x"].subject == "Change line two" and branches["feature/x"].author == "Test"
 
 
+def test_a_branch_author_is_shown_under_the_name_the_mailmap_gives(repo):
+    write_files(repo, {".mailmap": "Proper Name <test@example.com>\n"})
+    assert {b.author for b in Git(repo).branches()} == {"Proper Name"}
+
+
+def test_the_repository_without_branches_has_no_authors_to_map(tmp_path):
+    root = tmp_path / "empty"
+    git(root.parent, "init", "-q", str(root))
+    assert Git(root).branches() == []
+
+
 def test_ahead_and_behind_count_against_the_base(repo):
     assert Git(repo).ahead_behind("master", "feature/x") == (1, 1)
     assert Git(repo).ahead_behind("master", "master") == (0, 0)

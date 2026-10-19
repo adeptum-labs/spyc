@@ -21,7 +21,7 @@
 from dataclasses import dataclass
 
 FIELD_SEPARATOR = "\x1f"
-LOG_FORMAT = "%x1f".join(["%H", "%h", "%an", "%at", "%D", "%s"])
+LOG_FORMAT = "%x1f".join(["%H", "%h", "%aN", "%at", "%D", "%s"])
 
 
 @dataclass(frozen=True)

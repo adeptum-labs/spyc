@@ -52,6 +52,11 @@ def test_commits_come_newest_first(git_repo):
     assert "HEAD" in log[0].refs
 
 
+def test_an_author_is_shown_under_the_name_the_mailmap_gives(git_repo):
+    write_files(git_repo, {".mailmap": "Proper Name <test@example.com>\n"})
+    assert {entry.author for entry in Git(git_repo).log()} == {"Proper Name"}
+
+
 def test_the_log_is_read_in_pages(git_repo):
     commit(git_repo, "a.txt", "a", "Add a")
     commit(git_repo, "b.txt", "b", "Add b")

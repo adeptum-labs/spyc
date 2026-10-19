@@ -25,7 +25,7 @@ from spyc.git.log import FIELD_SEPARATOR
 LOCAL_PREFIX, REMOTE_PREFIX = "refs/heads/", "refs/remotes/"
 # The subject comes last so that a separator inside it stays in the subject.
 BRANCH_FORMAT = "%1f".join(["%(refname)", "%(objectname)", "%(upstream:short)", "%(committerdate:unix)",
-                            "%(authorname)", "%(HEAD)", "%(subject)"]) + "%00"
+                            "%(authorname) %(authoremail)", "%(HEAD)", "%(subject)"]) + "%00"
 FALLBACKS = ("master", "main")
 REMOTE_FALLBACKS = ("origin/master", "origin/main")
 
