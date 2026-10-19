@@ -86,6 +86,19 @@ def comparison_of(repo, name):
     return Comparison(branches[name], branches["master"])
 
 
+# forked, then feature merged into master without a fast-forward, and
+# optionally one more commit on feature alone.
+def merged_comparison(repo, more=False):
+    forked(repo)
+    git(repo, "merge", "-q", "--no-ff", "feature", "-m", "Merge feature")
+    if more:
+        git(repo, "checkout", "-q", "feature")
+        commit(repo, "f.txt", "3", "Feature three")
+        git(repo, "checkout", "-q", "master")
+    branches = {branch.name: branch for branch in Git(repo).branches()}
+    return Comparison(branches["feature"], branches["master"])
+
+
 async def whole_history(pilot):
     await pilot.press("h")
     await settle(pilot)
@@ -113,6 +126,35 @@ async def test_h_adds_the_base_s_commits_and_the_shared_history_and_takes_them_a
         assert len(listed) == 9
         await whole_history(pilot)
         assert len(rows(pilot)) == 3
+
+
+async def test_a_branch_log_shows_what_the_branch_has_merged_into_the_base_below_its_own(git_repo):
+    async with LogApp(git_repo, comparison=merged_comparison(git_repo, more=True)).run_test(size=(140, 40)) as pilot:
+        await settle(pilot)
+        listed = rows(pilot)
+        assert len(listed) == 5 and listed[0] == "Only on feature (↑1)" and "Feature three" in listed[1]
+        assert listed[2] == "Merged into master (2)"
+        assert listed[3].startswith("✓") and "Feature two" in listed[3]
+        assert listed[4].startswith("✓") and "Feature one" in listed[4]
+
+
+async def test_a_wholly_merged_branch_shows_what_it_merged_with_the_cursor_on_its_newest(git_repo):
+    async with LogApp(git_repo, comparison=merged_comparison(git_repo)).run_test(size=(140, 40)) as pilot:
+        await settle(pilot)
+        listed = rows(pilot)
+        assert len(listed) == 3 and listed[0] == "Merged into master (2)"
+        assert pilot.app.screen.query_one(OptionList).highlighted == 1 and detail(pilot)[0].text == "Feature two"
+
+
+async def test_h_lists_the_merged_commits_once_before_the_base_s_own(git_repo):
+    async with LogApp(git_repo, comparison=merged_comparison(git_repo, more=True)).run_test(size=(140, 40)) as pilot:
+        await settle(pilot)
+        await whole_history(pilot)
+        listed = rows(pilot)
+        assert listed[0] == "Only on feature (↑1)" and listed[2] == "Merged into master (2)"
+        assert listed[5] == "Only on master (↓2)" and "Merge feature" in listed[6] and "Master moved" in listed[7]
+        assert listed[8].startswith("── shared") and "Change a" in listed[9]
+        assert len(listed) == 12 and sum("Feature two" in row for row in listed) == 1
 
 
 async def test_h_does_nothing_in_a_log_that_is_not_compared(git_repo):

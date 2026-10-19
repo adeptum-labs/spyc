@@ -45,7 +45,7 @@ LOAD_AHEAD = 5
 DETAIL_DELAY = 0.1
 CACHED_DETAILS = 30
 NO_MARKER, SHARED_MARKER = ("", ""), ("  ", "")
-AHEAD_MARKER, BEHIND_MARKER = ("▌ ", "bold green"), ("▐ ", "bold magenta")
+AHEAD_MARKER, BEHIND_MARKER, MERGED_MARKER = ("▌ ", "bold green"), ("▐ ", "bold magenta"), ("✓ ", "bold blue")
 SHARED_TITLE = Text("── shared " + "─" * 30, style="dim")
 
 
@@ -57,11 +57,10 @@ class Section:
     revisions: tuple[str, ...]
 
 
-def _side(name: str, arrow: str, count: int | None, marker: tuple[str, str], revision: str) -> list[Section]:
+def _counted(title: str, count: int | None, arrow: str, marker: tuple[str, str], *revisions: str) -> list[Section]:
     if count == 0:
         return []
-    title = Text(f"Only on {printable(name)}" + ("" if count is None else f" ({arrow}{count})"), style="bold")
-    return [Section(title, marker, (revision,))]
+    return [Section(Text(title + ("" if count is None else f" ({arrow}{count})"), style="bold"), marker, revisions)]
 
 
 def _label(commit: Commit, now: float, marker: tuple[str, str]) -> Text:
@@ -79,8 +78,9 @@ def _label(commit: Commit, now: float, marker: tuple[str, str]) -> Text:
 # The commits of the repository, or of one file, newest first, with the
 # highlighted commit's message and diff beside them. Enter on a line of the
 # diff closes the log and gives the file and line to open. The log of a branch
-# compared with its base lists what only the branch has; the whole history adds
-# what only the base has, then the history they share.
+# compared with its base lists what only the branch has, then what it merged
+# into the base; the whole history adds what only the base has, then the
+# history they share.
 class LogScreen(Screen[Location | None]):
     DEFAULT_CSS = """
     LogScreen Horizontal { height: 1fr; }
@@ -146,15 +146,24 @@ class LogScreen(Screen[Location | None]):
         self.app.call_from_thread(self._page_ready, generation, sections, commits)
 
     # Commit hashes only, never branch names, so that no name is read as an option.
+    # The shared history starts where the branch last left the base's line, so
+    # what the branch merged into the base is listed once, as merged.
     def _compared(self) -> list[Section]:
         branch, base = self._comparison.branch, self._comparison.base
         ahead, behind = self._git.ahead_behind(base.commit, branch.commit) or (None, None)
-        own = _side(branch.name, "↑", ahead, AHEAD_MARKER, f"{base.commit}..{branch.commit}")
+        merge_bases = self._git.merge_bases(base.commit, branch.commit)
+        fork = self._git.mainline_fork(base.commit, branch.commit)
+        merged = (*merge_bases, f"^{fork}") if fork else ()
+        own = [*_counted(f"Only on {printable(branch.name)}", ahead, "↑", AHEAD_MARKER,
+                         f"{base.commit}..{branch.commit}"),
+               *_counted(f"Merged into {printable(base.name)}", self._git.count(merged) if merged else 0, "",
+                         MERGED_MARKER, *merged)]
         if not self._whole:
             return own
-        merge_bases = self._git.merge_bases(base.commit, branch.commit)
-        return [*own, *_side(base.name, "↓", behind, BEHIND_MARKER, f"{branch.commit}..{base.commit}"),
-                *([Section(SHARED_TITLE, SHARED_MARKER, tuple(merge_bases))] if merge_bases else [])]
+        shared = (fork,) if fork else tuple(merge_bases)
+        return [*own, *_counted(f"Only on {printable(base.name)}", behind, "↓", BEHIND_MARKER,
+                                f"{branch.commit}..{base.commit}"),
+                *([Section(SHARED_TITLE, SHARED_MARKER, shared)] if shared else [])]
 
     # A title comes with the first commit of its section, so a section the
     # filter empties leaves none behind. A section that ends reads the next at

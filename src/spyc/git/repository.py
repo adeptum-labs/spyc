@@ -157,6 +157,22 @@ class Git:
     def merge_bases(self, first: str, second: str) -> list[str]:
         return (self.run("merge-base", "--all", first, second) or "").split()
 
+    # The newest commit on base's first-parent line that commit has, so what
+    # both have after it reached base through merges. It is the first parent
+    # of the oldest one on the line commit lacks; --boundary would also name
+    # the other parents of merges. None when commit has all of base or they
+    # share no history.
+    def mainline_fork(self, base: str, commit: str) -> str | None:
+        output = self.run("rev-list", "--first-parent", "--parents", base, f"^{commit}")
+        oldest = (output or "").strip().rpartition("\n")[2].split()
+        return oldest[1] if len(oldest) > 1 else None
+
+    def count(self, revisions: Sequence[str]) -> int | None:
+        try:
+            return int(self.run("rev-list", "--count", *revisions) or "")
+        except ValueError:
+            return None
+
     def branch_diff(self, base: str, commit: str) -> Diff | None:
         output = self.run("diff", "-M", *DIFF_OPTIONS, f"{base}...{commit}")
         return None if output is None else parse_diff(output)

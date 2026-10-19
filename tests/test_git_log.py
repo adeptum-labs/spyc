@@ -125,6 +125,33 @@ def test_the_merge_base_is_where_two_commits_fork(git_repo):
     assert Git(git_repo).merge_bases(feature, master) == [fork]
 
 
+def test_the_mainline_fork_of_a_branch_never_merged_is_its_merge_base(git_repo):
+    feature, master = forked(git_repo)
+    assert Git(git_repo).mainline_fork(master, feature) == Git(git_repo).merge_bases(feature, master)[0]
+
+
+def test_the_mainline_fork_of_a_merged_branch_is_where_it_left_the_base(git_repo):
+    feature, _ = forked(git_repo)
+    fork = Git(git_repo).merge_bases(feature, "master")[0]
+    git(git_repo, "merge", "-q", "--no-ff", "feature", "-m", "Merge feature")
+    commit(git_repo, "n.txt", "n", "Add n")
+    master = Git(git_repo).log()[0].hash
+    assert Git(git_repo).mainline_fork(master, feature) == fork
+
+
+def test_a_branch_with_all_of_the_base_has_no_mainline_fork(git_repo):
+    feature, master = forked(git_repo)
+    git(git_repo, "checkout", "-q", "feature")
+    git(git_repo, "merge", "-q", "master", "-m", "Merge master")
+    assert Git(git_repo).mainline_fork(master, Git(git_repo).log()[0].hash) is None
+
+
+def test_revisions_are_counted(git_repo):
+    feature, master = forked(git_repo)
+    assert Git(git_repo).count([feature, f"^{master}"]) == 1
+    assert Git(git_repo).count([master]) == 2
+
+
 def test_unrelated_histories_have_no_merge_base(git_repo):
     first = Git(git_repo).log()[0].hash
     git(git_repo, "checkout", "-q", "--orphan", "other")
