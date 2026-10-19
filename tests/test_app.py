@@ -18,6 +18,7 @@
 # Contact: info@adeptum.se
 
 
+import spyc.app
 from repos import make_repo, write_files
 from spyc.app import SpycApp
 from spyc.core.location import Location
@@ -235,3 +236,13 @@ async def test_a_file_that_cannot_be_opened_is_reported_not_fatal(project, tmp_p
         app.open_file("nope.py")
         await pilot.pause()
         assert app.query_one(CodeView).document is None and app.query_one(OverviewPane).display
+
+
+async def test_a_check_for_changes_while_the_app_closes_does_not_look_for_the_removed_code_view(
+        project, tmp_path, monkeypatch):
+    monkeypatch.setattr(spyc.app, "RELOAD_INTERVAL", 0.001)
+    app = make_app(project, tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("src/app.py")
+        await pilot.pause()

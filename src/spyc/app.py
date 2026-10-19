@@ -813,7 +813,10 @@ class SpycApp(App):
         self._refresh_git()
 
     # A stat every couple of seconds needs no dependency and works on network mounts, unlike inotify.
+    # A closing app removes its widgets before it stops its timers.
     async def _check_for_changes(self) -> None:
+        if not self.is_running:
+            return
         document = self._code.document
         if document is None or not self.source.editable:
             return
