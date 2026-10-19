@@ -148,9 +148,10 @@ async def test_an_error_while_indexing_is_told_to_the_user_and_shown_in_the_grap
 
 async def test_a_graph_build_is_cut_short_when_the_app_is_left(tmp_path, monkeypatch):
     import time
-    seen = []
+    started, seen = [], []
 
     def slow(facts, stop=lambda: False):
+        started.append(True)
         deadline = time.monotonic() + 5
         while not stop() and time.monotonic() < deadline:
             time.sleep(0.01)
@@ -161,7 +162,7 @@ async def test_a_graph_build_is_cut_short_when_the_app_is_left(tmp_path, monkeyp
     write_files(tmp_path / "proj", JAVA)
     monkeypatch.setattr("spyc.app.DependencyGraph", slow)
     async with make_app(tmp_path / "proj", tmp_path).run_test(size=SIZE) as pilot:
-        await pilot.pause(0.5)
+        await until(pilot, lambda: started)
         assert seen == []
     deadline = time.monotonic() + 5
     while not seen and time.monotonic() < deadline:
