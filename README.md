@@ -10,9 +10,8 @@ open a code base with.
 
 ![A file with coverage marks in the margin, changed lines marked, and shares in the tree](docs/code.svg)
 
-![The overview of a project](docs/overview.svg)
-
-![The commit log with the diff of a commit](docs/log.svg)
+More screenshots, of the overview and the commit log, are in the
+[wiki](https://github.com/adeptum-labs/spyc/wiki/Screenshots).
 
 ## Requirements
 
