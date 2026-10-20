@@ -63,28 +63,17 @@ with a number, the files behind it, runs from each box to the ones it depends on
 parts. Test files are left out until `t` shows them. Java, Kotlin, Python, JavaScript, TypeScript, TSX, Go, Rust, C and C++ are read. How each language is read and
 what the graph cannot see is described in the [wiki](https://github.com/adeptum-labs/spyc/wiki/Dependencies).
 
-## Asking Claude
+## More
 
-`a` has Claude describe what is selected: a directory, a file, a class or a box in the dependency graph. The key exists
-only when `claude` is on the path and logged in. Claude gets read-only tools (`Read`, `Grep`, `Glob`) and answers are
-cached per project. More in the [wiki](https://github.com/adeptum-labs/spyc/wiki/Asking-Claude).
-
-## Coverage
-
-spyc reads LCOV, Cobertura, JaCoCo XML and Go cover profiles, found in the project or named with `--coverage`. The
-margin marks the lines that ran, ran in part or never ran, and the tree and the overview give the shares. More in the
-[wiki](https://github.com/adeptum-labs/spyc/wiki/Coverage).
-
-## Colors
-
-The code is colored with tree-sitter grammars for the common languages and with Pygments for the rest, in a theme
-chosen in the command palette. The languages are listed in the [wiki](https://github.com/adeptum-labs/spyc/wiki/Colors).
-
-## Files
-
-`state.json` (recent files, theme, sidebar) and `spyc.log` (warnings) are kept in `$XDG_STATE_HOME/spyc`, by default
-`~/.local/state/spyc`. What is read from the code of a project (definitions and imports) is cached per project in
-`$XDG_CACHE_HOME/spyc`, by default `~/.cache/spyc`, and can be deleted at any time.
+- **[Asking Claude](https://github.com/adeptum-labs/spyc/wiki/Asking-Claude):** `a` describes the selected directory,
+  file, class or graph box, with read-only tools; only when `claude` is on the path and logged in
+- **[Coverage](https://github.com/adeptum-labs/spyc/wiki/Coverage):** LCOV, Cobertura, JaCoCo XML and Go cover
+  profiles, marked in the margin and as shares in the tree and the overview
+- **[Colors](https://github.com/adeptum-labs/spyc/wiki/Colors):** tree-sitter for the common languages, Pygments for
+  the rest, in a theme chosen in the command palette
+- **Files:** `state.json` (recent files, theme, sidebar) and `spyc.log` in `$XDG_STATE_HOME/spyc`
+  (`~/.local/state/spyc`); a cache of definitions and imports in `$XDG_CACHE_HOME/spyc` (`~/.cache/spyc`) that can be
+  deleted at any time
 
 ## License
 
