@@ -50,51 +50,10 @@ the build systems and the key files, such as the README, the build files, the CI
 
 ## Keys
 
-| Keys | What they do |
-|---|---|
-| `f` | Find a file by name; `name:line` jumps to a line |
-| `s` | Search the text of the project (ripgrep when installed); `alt+r` or `F2` for a pattern, `alt+w` or `F3` for whole words |
-| `o` | Outline: the definitions of the open file |
-| `t` | Find a definition anywhere in the project |
-| `d` | Go to the definition of the name under the cursor, the nearest first; `[` comes back |
-| `/` | Find in the file; `n` and `N` step through the matches |
-| `:` | Go to a line |
-| `[` `]` | Back and forward through the files you have visited |
-| `l` | Commit log; the diff of each commit beside it, `/` filters by message, `Enter` on a diff line opens it |
-| `L` | History of the open file, following renames |
-| `B` | Branches, compared with the default branch: `Enter` the log of the commits only on the branch, then those it merged into the default branch marked `✓`, where `h` adds those only on the default branch and the history they share, `d` the diff, `v` browse the files read-only without switching branch; the first row returns to the working tree |
-| `g` | All uncommitted changes, staged or not, and new files, as one diff |
-| `b` | Show who last changed each line; `Enter` on a line opens that commit |
-| `c` | Show or hide what the tests ran, from the coverage reports |
-| `G` | Dependency graph: the packages of one level as layered boxes, what depends on what above what it depends on, with a count on each line; arrow keys or `Tab` select, `Enter` goes into a box, `Backspace` out of it, `/` finds, `c` finds cycles, `o` opens the code |
-| `a` | Ask Claude to describe the directory, package, file or class; only when `claude` is installed and logged in |
-| `e` | Edit in `$VISUAL` or `$EDITOR` at the cursor line |
-| `p` | Copy `path:line` to the clipboard |
-| `i` | Project overview |
-| `\` | Show or hide the file tree |
-| `>` `<` | Widen or narrow the file tree; dragging the line beside it with the mouse resizes it too, and the width is remembered |
-| `.` | Show or hide files that git ignores |
-| `R` | Read the file list again |
-| `r` | Rendered or source view of a Markdown file |
-| `Tab` | Switch between the tree and the code |
-| `?` | The key reference |
-| `q` | Quit |
-| `↑` `↓` `j` `k`, `←` `→` | Move by line and by character |
-| `Home` `End` | Start or end of the line |
-| `PgUp` `PgDn` `Space`, `ctrl+u` `ctrl+d` | Move by page or half a page |
-| `ctrl+Home` `ctrl+End` | Start or end of the file |
-| `Enter` | Open the file in the tree; `←` and `→` close and open directories |
-| `ctrl+p` | Command palette, where the color theme can be changed |
-
-Outline and go-to-definition know the definitions of Python, Java, Kotlin, Go, Rust, JavaScript, TypeScript, C, C++,
-Bash and Markdown headings.
-
-In a git repository the tree marks changed files and their directories, the code view marks added, changed and
-deleted lines in the margin, and the overview and the title tell the branch, the number of changes and the last
-commit. In a branch view the tree, the code, the search, the outline and the graph read from the branch, the log
-lists the commits only on the branch and those it merged as from `B`, and editing, coverage and the changes of the
-working tree are off.
-The mouse works too: click to place the cursor, scroll to move.
+`f` finds a file, `s` searches the project, `o` and `t` find definitions and `d` goes to one. `l` is the commit log,
+`B` the branches, `g` the uncommitted changes and `b` the blame. `G` draws the dependency graph, `c` shows coverage and
+`a` asks Claude. `?` lists every key inside spyc, and the [wiki](https://github.com/adeptum-labs/spyc/wiki/Keys) has
+the full reference.
 
 ## Dependencies
 
@@ -113,23 +72,14 @@ cached per project. More in the [wiki](https://github.com/adeptum-labs/spyc/wiki
 
 ## Coverage
 
-spyc reads LCOV, Cobertura, JaCoCo XML and Go cover profiles. Reports are recognised by their content and looked for by
-their usual names (`lcov.info`, `coverage.xml`, `jacoco.xml`, `jacocoTestReport.xml`, `cover.out` and so on) up to six
-directories down, build output included; `--coverage FILE` names them instead. Several reports of a project are merged,
-and a line counts as often as its most thorough report says. Reports are read whole, so one over 32 MB is skipped.
-
-In the margin a filled circle (green) is a line that ran, a half one (yellow) a line where some branch was never taken,
-and an empty one (red) a line that never ran. The status bar gives the share of the lines of the open file that ran,
-and says `(stale)` when the file is newer than its report. The tree shows the share after each file and directory,
-and the overview the total. `c` hides and shows the margin and the tree shares, and the choice is remembered. The
-paths of a report may be relative, absolute in another checkout, Java package paths or Go import paths; they are
-matched to the files of the project by their ends. Reports are read again with `R`.
+spyc reads LCOV, Cobertura, JaCoCo XML and Go cover profiles, found in the project or named with `--coverage`. The
+margin marks the lines that ran, ran in part or never ran, and the tree and the overview give the shares. More in the
+[wiki](https://github.com/adeptum-labs/spyc/wiki/Coverage).
 
 ## Colors
 
-The code is colored with tree-sitter grammars for Bash, C, C++, CSS, Go, HTML, Java, JavaScript, JSON, Kotlin,
-Python, Rust, SCSS, SQL, TOML, TSX, TypeScript, XML and YAML. Other languages are colored with Pygments. The theme
-follows the one chosen in the command palette and is remembered.
+The code is colored with tree-sitter grammars for the common languages and with Pygments for the rest, in a theme
+chosen in the command palette. The languages are listed in the [wiki](https://github.com/adeptum-labs/spyc/wiki/Colors).
 
 ## Files
 
