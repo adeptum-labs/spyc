@@ -10,8 +10,7 @@ open a code base with.
 
 ![A file with coverage marks in the margin, changed lines marked, and shares in the tree](docs/code.svg)
 
-More screenshots, of the overview and the commit log, are in the
-[wiki](https://github.com/adeptum-labs/spyc/wiki/Screenshots).
+The [wiki](https://github.com/adeptum-labs/spyc/wiki) describes each part in full, with more screenshots.
 
 ## Requirements
 
