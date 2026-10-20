@@ -120,6 +120,12 @@ async def capture(root: Path, state: Path) -> None:
         await pilot.press("escape", "G")
         await settle(pilot)
         app.save_screenshot(filename="graph.svg", path=str(DOCS))
+    app = SpycApp(root, Location("src/orders/pricing.py", 1), StateStore(state / "state.json"))
+    async with app.run_test(size=SIZE) as pilot:
+        await settle(pilot)
+        await pilot.press("c")
+        await settle(pilot)
+        app.save_screenshot(filename="colors.svg", path=str(DOCS))
 
 
 async def settle(pilot) -> None:
