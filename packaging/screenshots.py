@@ -28,12 +28,28 @@ from pathlib import Path
 
 from spyc.app import SpycApp
 from spyc.core.location import Location
+from spyc.deps.scopes import DIRECTORY, Member
 from spyc.state import StateStore
 from spyc.widgets.code_view import CodeView
 
 DOCS = Path(__file__).resolve().parent.parent / "docs"
 SIZE = (118, 34)
 SAMPLE = Path(tempfile.gettempdir()) / "spyc-screenshots" / "orders"
+SHOP = Path(tempfile.gettempdir()) / "spyc-screenshots" / "shop"
+# The directories of a bigger project and what each one imports, for the picture of the impact of one of them.
+SHOP_IMPORTS = {
+    "web": ["cart", "search", "accounts"],
+    "api": ["cart", "billing", "accounts"],
+    "cart": ["pricing", "storage"],
+    "billing": ["pricing", "payments"],
+    "search": ["catalog"],
+    "catalog": ["storage"],
+    "accounts": ["storage"],
+    "pricing": ["money"],
+    "payments": ["money"],
+    "storage": [],
+    "money": [],
+}
 FILES = {
     ".gitignore": "coverage/\n__pycache__/\n",
     "pyproject.toml": '[project]\nname = "orders"\nversion = "1.4.0"\n',
@@ -125,15 +141,36 @@ async def capture(root: Path, state: Path) -> None:
         await pilot.press("escape", "G")
         await settle(pilot)
         app.save_screenshot(filename="graph.svg", path=str(DOCS))
-        await pilot.press("up", "i")
-        await settle(pilot)
-        app.save_screenshot(filename="impact.svg", path=str(DOCS))
     app = SpycApp(root, Location("src/orders/pricing.py", 1), StateStore(state / "state.json"))
     async with app.run_test(size=SIZE) as pilot:
         await settle(pilot)
         await pilot.press("c")
         await settle(pilot)
         app.save_screenshot(filename="colors.svg", path=str(DOCS))
+
+
+def make_shop(root: Path) -> None:
+    root.mkdir(parents=True)
+    (root / "pyproject.toml").write_text('[project]\nname = "shop"\nversion = "2.0.0"\n')
+    for name, imports in SHOP_IMPORTS.items():
+        directory = root / "src" / "shop" / name
+        directory.mkdir(parents=True)
+        (directory / "__init__.py").write_text("")
+        lines = [f"from shop.{other}.core import run as run_{other}\n" for other in imports]
+        (directory / "core.py").write_text("".join(lines) + f"\n\ndef run() -> str:\n    return '{name}'\n")
+
+
+async def capture_impact(root: Path, state: Path) -> None:
+    app = SpycApp(root, None, StateStore(state / "state.json"))
+    async with app.run_test(size=SIZE) as pilot:
+        await settle(pilot)
+        await pilot.press("G")
+        await settle(pilot)
+        screen = app.screen
+        screen.selected = Member(DIRECTORY, ("src", "shop", "pricing"))
+        await pilot.press("i")
+        await settle(pilot)
+        app.save_screenshot(filename="impact.svg", path=str(DOCS))
 
 
 async def settle(pilot) -> None:
@@ -146,7 +183,9 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as state:
         shutil.rmtree(SAMPLE.parent, ignore_errors=True)
         make_project(SAMPLE)
+        make_shop(SHOP)
         asyncio.run(capture(SAMPLE, Path(state)))
+        asyncio.run(capture_impact(SHOP, Path(state)))
         shutil.rmtree(SAMPLE.parent)
     print("\n".join(str(path) for path in sorted(DOCS.glob("*.svg"))))
     return 0
