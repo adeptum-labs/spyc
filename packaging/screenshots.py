@@ -125,7 +125,7 @@ async def capture(root: Path, state: Path) -> None:
         await pilot.press("escape", "G")
         await settle(pilot)
         app.save_screenshot(filename="graph.svg", path=str(DOCS))
-        await pilot.press("i")
+        await pilot.press("up", "i")
         await settle(pilot)
         app.save_screenshot(filename="impact.svg", path=str(DOCS))
     app = SpycApp(root, Location("src/orders/pricing.py", 1), StateStore(state / "state.json"))
