@@ -69,12 +69,15 @@ class Painter:
             return SELECTED if node == selected else ""
         if not wires:
             return ""
-        cyclic = any(self._drawing.wires[wire].cyclic for wire in wires)
+        # Where wires cross, the cell shows the cycle colour only when every wire that decides its colour is in a cycle.
         if not live:
-            return CYCLE if cyclic else ""
+            return CYCLE if self._all_cyclic(wires) else ""
         if any(wire in live for wire in wires):
-            return LIVE_CYCLE if cyclic else LIVE
+            return LIVE_CYCLE if self._all_cyclic([wire for wire in wires if wire in live]) else LIVE
         return DIM
+
+    def _all_cyclic(self, wires) -> bool:
+        return all(self._drawing.wires[wire].cyclic for wire in wires)
 
 
 # A drawing is mostly empty or made of long runs of one box or wire, so a row is kept as the runs of cells that

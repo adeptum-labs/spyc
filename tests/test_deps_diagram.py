@@ -50,6 +50,21 @@ def test_the_wires_of_a_cycle_are_yellow():
     assert "yellow" in styles(drawing, None) and "bold yellow" in styles(drawing, "a")
 
 
+def test_a_crossing_is_yellow_only_where_every_wire_through_it_is_in_a_cycle():
+    nodes = list("abcdefg")
+    edges = {"a": {"b": 1}, "b": {"a": 1, "e": 1}, "c": {"a": 1, "b": 1, "e": 1}, "d": {"c": 1, "b": 1, "a": 1},
+             "f": {"d": 1, "a": 1, "b": 1, "e": 1}, "g": {"f": 1, "e": 1, "a": 1}}
+    group = frozenset("ab")
+    drawing = layout(nodes, edges, {"a": group, "b": group}, {n: n for n in nodes}, "t")
+    mixed = [(y, x) for y, row in enumerate(drawing.rows) for x, cell in enumerate(row)
+             if len({drawing.wires[wire].cyclic for wire in cell.wires}) > 1]
+    assert mixed
+    for selected in (None, "d", "g"):
+        lines = paint(drawing, selected)
+        for y, x in mixed:
+            assert not any("yellow" in str(span.style) and span.start <= x < span.end for span in lines[y].spans)
+
+
 def test_a_painter_gives_the_same_lines_as_painting_and_does_not_paint_a_row_again_that_did_not_change():
     painter = Painter(DRAWING)
     first = painter.paint("left")
