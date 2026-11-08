@@ -29,6 +29,7 @@ from pathlib import Path
 from spyc.app import SpycApp
 from spyc.core.location import Location
 from spyc.state import StateStore
+from spyc.widgets.code_view import CodeView
 
 DOCS = Path(__file__).resolve().parent.parent / "docs"
 SIZE = (118, 34)
@@ -111,7 +112,11 @@ async def capture(root: Path, state: Path) -> None:
     async with app.run_test(size=SIZE) as pilot:
         await settle(pilot)
         app.save_screenshot(filename="code.svg", path=str(DOCS))
-        await pilot.press("i")
+        app.query_one(CodeView).goto(6, 4)
+        await pilot.press("u")
+        await settle(pilot)
+        app.save_screenshot(filename="usages.svg", path=str(DOCS))
+        await pilot.press("escape", "i")
         await settle(pilot)
         app.save_screenshot(filename="overview.svg", path=str(DOCS))
         await pilot.press("l")
@@ -120,6 +125,9 @@ async def capture(root: Path, state: Path) -> None:
         await pilot.press("escape", "G")
         await settle(pilot)
         app.save_screenshot(filename="graph.svg", path=str(DOCS))
+        await pilot.press("i")
+        await settle(pilot)
+        app.save_screenshot(filename="impact.svg", path=str(DOCS))
     app = SpycApp(root, Location("src/orders/pricing.py", 1), StateStore(state / "state.json"))
     async with app.run_test(size=SIZE) as pilot:
         await settle(pilot)
