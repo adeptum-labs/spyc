@@ -31,12 +31,12 @@ CACHED_PAINTS_PER_ROW = 20
 EXTERNALS_SHOWN = 3
 
 
-def paint(drawing: Drawing, selected: Hashable | None) -> list[Text]:
-    return Painter(drawing).paint(selected)
+def paint(drawing: Drawing, selected: Hashable | None, reach: frozenset | None = None) -> list[Text]:
+    return Painter(drawing).paint(selected, reach)
 
 
 # Paints a drawing again and again as the selection moves. A row looks the same as before when the same wires of it
-# are live and the same box of it is selected, so only the rows a move changes are painted.
+# are live and the same boxes of it are selected or reached, so only the rows a move changes are painted.
 class Painter:
     def __init__(self, drawing: Drawing) -> None:
         self._drawing = drawing
@@ -45,32 +45,42 @@ class Painter:
                        frozenset(node for _, node, _ in runs if node is not None)) for runs in self._runs]
         self._lines: dict[tuple, Text] = {}
 
-    def paint(self, selected: Hashable | None) -> list[Text]:
+    # With `reach`, the boxes it holds and the wires between them and the selected box stand out, and all else is
+    # dim, even when nothing is reached. Without it, the wires of the selected box stand out.
+    def paint(self, selected: Hashable | None, reach: frozenset | None = None) -> list[Text]:
         wires = self._drawing.wires
-        live = frozenset(number for number, wire in enumerate(wires) if selected in (wire.source, wire.target))
+        if reach is None:
+            live = frozenset(number for number, wire in enumerate(wires) if selected in (wire.source, wire.target))
+        else:
+            reach = reach | {selected}
+            live = frozenset(number for number, wire in enumerate(wires) if wire.source in reach and wire.target in reach)
         if len(self._lines) > CACHED_PAINTS_PER_ROW * len(self._rows):
             self._lines.clear()
         lines = []
         for y, (in_row, nodes) in enumerate(self._rows):
-            key = (y, in_row & live, selected if selected in nodes else None, bool(live))
+            key = (y, in_row & live, selected if selected in nodes else None, reach & nodes if reach is not None else None,
+                   reach is not None or bool(live))
             if key not in self._lines:
-                self._lines[key] = self._line(y, selected, live)
+                self._lines[key] = self._line(y, selected, live, reach)
             lines.append(self._lines[key])
         return lines
 
-    def _line(self, y: int, selected: Hashable | None, live: frozenset[int]) -> Text:
+    def _line(self, y: int, selected: Hashable | None, live: frozenset[int], reach: frozenset | None) -> Text:
         line = Text(no_wrap=True)
         for text, node, wires in self._runs[y]:
-            line.append(text, style=self._style(node, wires, selected, live))
+            line.append(text, style=self._style(node, wires, selected, live, reach))
         return line
 
-    def _style(self, node: Hashable | None, wires: tuple[int, ...], selected: Hashable | None, live: frozenset[int]) -> str:
+    def _style(self, node: Hashable | None, wires: tuple[int, ...], selected: Hashable | None, live: frozenset[int],
+               reach: frozenset | None) -> str:
         if node is not None:
-            return SELECTED if node == selected else ""
+            if node == selected:
+                return SELECTED
+            return "" if reach is None else LIVE if node in reach else DIM
         if not wires:
             return ""
         # Where wires cross, the cell shows the cycle colour only when every wire that decides its colour is in a cycle.
-        if not live:
+        if reach is None and not live:
             return CYCLE if self._all_cyclic(wires) else ""
         if any(wire in live for wire in wires):
             return LIVE_CYCLE if self._all_cyclic([wire for wire in wires if wire in live]) else LIVE
@@ -117,8 +127,10 @@ def following(boxes: list[Box], current: Hashable, step: int) -> Hashable:
 
 
 def status_text(kind: str, name: str, outgoing: int, incoming: int, externals: list[tuple[str, int]], cycle: int,
-                dense: bool) -> Text:
+                dense: bool, impact: str = "") -> Text:
     parts = [f"{kind} {name}", f"{outgoing} out", f"{incoming} in"]
+    if impact:
+        parts.append(impact)
     if externals:
         shown = ", ".join(printable(external) for external, _ in externals[:EXTERNALS_SHOWN])
         parts.append(f"{len(externals)} external ({shown}{', ...' if len(externals) > EXTERNALS_SHOWN else ''})")

@@ -94,7 +94,7 @@ MARKDOWN_LIMIT = 50_000
 # Keys that act on the main view, which is hidden behind the log, the changes
 # and the pickers while those are open.
 MAIN_VIEW_ACTIONS = frozenset({
-    "find_file", "search_project", "show_outline", "find_symbol", "go_to_definition", "search_in_file", "goto_line", "history_back", "history_forward", "show_log", "show_file_log",
+    "find_file", "search_project", "show_outline", "find_symbol", "go_to_definition", "find_usages", "search_in_file", "goto_line", "history_back", "history_forward", "show_log", "show_file_log",
     "show_branches", "show_changes", "toggle_blame", "toggle_coverage", "show_graph", "edit", "copy_location", "overview", "toggle_sidebar", "toggle_ignored",
     "toggle_markdown", "refresh_project", "about", "widen_sidebar", "narrow_sidebar"})
 
@@ -122,6 +122,7 @@ class SpycApp(App):
         Binding("o", "show_outline", "Outline"),
         Binding("slash", "search_in_file", "Find"),
         Binding("d", "go_to_definition", "Goto"),
+        Binding("u", "find_usages", "Usages", show=False),
         Binding("t", "find_symbol", "Symbols", show=False),
         Binding("colon", "goto_line", "Line", show=False),
         Binding("left_square_bracket", "history_back", "Back", show=False),
@@ -607,6 +608,20 @@ class SpycApp(App):
                         markup=False)
             source = SearchSource(self.source, lambda: self._paths or (), whole_word=True)
             self.push_screen(Picker(source, word), self._file_chosen)
+
+    # Every place the name under the cursor is used, as text: the lines that define it are left out.
+    def action_find_usages(self) -> None:
+        code = self._viewing_for("look for usages")
+        if code is None:
+            return
+        word = code.word_at_cursor()
+        if word is None:
+            self.notify("Put the cursor on a name first")
+            return
+        defined = {(item.path, item.symbol.line) for item in self._definitions_of(word, code)}
+        source = SearchSource(self.source, lambda: self._paths or (), whole_word=True,
+                              skip=lambda hit: (hit.path, hit.line) in defined)
+        self.push_screen(Picker(source, word), self._file_chosen)
 
     def _index_progress_note(self) -> str:
         return " yet, the index is still being built" if self._symbols.done < self._symbols.total else ""

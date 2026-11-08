@@ -35,6 +35,7 @@ from spyc.core.printable import printable
 from spyc.core.source import DiskSource, FileSource
 from spyc.deps.diagram import DENSE_BOXES, Painter, following, neighbour, status_text
 from spyc.deps.graph import FILE, DependencyGraph, Node
+from spyc.deps.impact import reached, reversed_edges
 from spyc.deps.layout import Drawing, layout
 from spyc.deps.picker import NodeSource
 from spyc.deps.scopes import OWN_LABEL, ROOT, Hierarchy, Member, label_of, title_of
@@ -42,11 +43,13 @@ from spyc.screens.picker import Picker
 from spyc.widgets.graph_view import GraphView
 
 PROGRESS_INTERVAL = 0.5
+DEPENDENTS, DEPENDENCIES = "dependents", "dependencies"
 NOTHING_FOUND = "No dependencies found: no file is in a supported language"
 
 
 # The packages of one scope as layered boxes, what depends on what above what it depends on. Enter goes into
-# the selected box and Backspace out of it; the arrow keys and Tab move the selection; o gives the code to open.
+# the selected box and Backspace out of it; the arrow keys and Tab move the selection; o gives the code to open;
+# i shows what depends on the selected box, all the way, and then what it depends on.
 class GraphScreen(Screen[Location | None]):
     DEFAULT_CSS = """
     GraphScreen #graph-header { height: 1; padding: 0 1; background: $panel; }
@@ -59,6 +62,7 @@ class GraphScreen(Screen[Location | None]):
         Binding("slash", "pick", "Find"),
         Binding("o", "open", "Open"),
         Binding("c", "cycle", "Cycles"),
+        Binding("i", "impact", "Impact"),
         Binding("t", "tests", "Tests"),
         Binding("a", "about", "About"),
         Binding("left,h", "move(0,-1)", show=False),
@@ -82,6 +86,8 @@ class GraphScreen(Screen[Location | None]):
         self._painter: Painter | None = None
         self._edges: dict = {}
         self._cycles: dict = {}
+        self._users: dict = {}
+        self._impact: str | None = None
         self.scope: Member = ROOT
         self.selected: Member | None = None
         self._timer = None
@@ -138,6 +144,7 @@ class GraphScreen(Screen[Location | None]):
     def _show(self, scope: Member, selected: Member | None = None) -> None:
         members = self._hierarchy.members(scope)
         self._edges = self._hierarchy.edges(scope)
+        self._users = reversed_edges(self._edges)
         self._cycles = self._hierarchy.cycles(self._edges, members)
         labels = {member: printable(label_of(member, scope)) for member in members}
         self._drawing = layout(members, self._edges, self._cycles, labels, printable(title_of(scope, self._root.resolve().name)))
@@ -146,10 +153,11 @@ class GraphScreen(Screen[Location | None]):
         self.selected = selected if selected in members else min(members, key=self._busyness, default=None)
 
     def _busyness(self, member: Member) -> tuple[int, str]:
-        degree = len(self._edges.get(member, {})) + sum(member in targets for targets in self._edges.values())
+        degree = len(self._edges.get(member, {})) + len(self._users.get(member, ()))
         return -degree, label_of(member, self.scope)
 
     def _go(self, scope: Member, selected: Member | None = None) -> None:
+        self._impact = None
         self._show(scope, selected)
         self._redraw()
 
@@ -160,8 +168,9 @@ class GraphScreen(Screen[Location | None]):
             header.update(Text(""))
             view.show([Text(self._message())], [])
             return
-        view.show(self._painter.paint(self.selected), drawing.boxes)
-        header.update(Text.assemble(self._tests_label(), self._status(len(drawing.boxes))))
+        reach = self._reach()
+        view.show(self._painter.paint(self.selected, reach), drawing.boxes)
+        header.update(Text.assemble(self._tests_label(), self._status(len(drawing.boxes), reach)))
         if (box := next((box for box in drawing.boxes if box.node == self.selected), None)) is not None:
             view.reveal(box)
 
@@ -170,14 +179,25 @@ class GraphScreen(Screen[Location | None]):
             return ""
         return f"Tests: {'shown' if self._tests else 'hidden'} (t) · "
 
-    def _status(self, boxes: int) -> Text:
+    def _status(self, boxes: int, reach: frozenset | None) -> Text:
         member = self.selected
         if member is None:
             return Text("")
-        outgoing, incoming = len(self._edges.get(member, {})), sum(member in targets for targets in self._edges.values())
+        outgoing, incoming = len(self._edges.get(member, {})), len(self._users.get(member, ()))
         kind = f"{member.kind} {OWN_LABEL}" if member.own else member.kind
         return status_text(kind, printable(member.key), outgoing, incoming, self._hierarchy.externals(member),
-                           len(self._cycles.get(member, ())), boxes >= DENSE_BOXES)
+                           len(self._cycles.get(member, ())), boxes >= DENSE_BOXES, self._impact_text(reach))
+
+    # The boxes the selected one reaches in the direction the impact mode shows, or None while it is off.
+    def _reach(self) -> frozenset | None:
+        if self._impact is None or self.selected is None:
+            return None
+        return reached(self._users if self._impact == DEPENDENTS else self._edges, self.selected)
+
+    def _impact_text(self, reach: frozenset | None) -> str:
+        if reach is None:
+            return ""
+        return f"{len(reach - {self.selected})} {self._impact} in all (i)"
 
     def _message(self) -> str:
         if self._failure is not None:
@@ -246,6 +266,12 @@ class GraphScreen(Screen[Location | None]):
             return
         later = [member for member in members if self.selected is None or member > self.selected]
         self.selected = (later or members)[0]
+        self._redraw()
+
+    def action_impact(self) -> None:
+        if self._drawing is None or self.selected is None:
+            return
+        self._impact = {None: DEPENDENTS, DEPENDENTS: DEPENDENCIES}.get(self._impact)
         self._redraw()
 
     def action_tests(self) -> None:

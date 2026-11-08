@@ -47,6 +47,13 @@ def test_the_matched_text_is_marked_and_leading_blanks_are_dropped(source):
     assert [label.plain[span.start:span.end] for span in label.spans if str(span.style) == "bold yellow"] == ["foo"]
 
 
+def test_hits_that_the_skip_predicate_is_true_for_are_left_out(tmp_path):
+    write_files(tmp_path, {"a.py": "def foo():\n    return 1\n", "b.txt": "  a foo here\n"})
+    paths = build_index(tmp_path).paths
+    source = SearchSource(DiskSource(tmp_path), lambda: paths, skip=lambda hit: (hit.path, hit.line) == ("a.py", 1))
+    assert [(item.key, item.line) for item in source.search("foo")] == [("b.txt", 1)]
+
+
 def test_control_characters_in_a_hit_never_reach_the_list(source):
     assert all("\x1b" not in item.label.plain for item in source.search("foo"))
 

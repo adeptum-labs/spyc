@@ -39,8 +39,10 @@ class SearchSource:
     threaded = True
     debounce = 0.25
 
-    def __init__(self, source: FileSource, paths: Callable[[], Sequence[str]], whole_word: bool = False) -> None:
-        self._source, self._paths = source, paths
+    # `skip` leaves out the hits it is true for.
+    def __init__(self, source: FileSource, paths: Callable[[], Sequence[str]], whole_word: bool = False,
+                 skip: Callable[[Hit], bool] | None = None) -> None:
+        self._source, self._paths, self._skip = source, paths, skip
         self.regex, self.whole_word = False, whole_word
         self._last = ("", SearchResult())
         self._lock = threading.Lock()
@@ -77,7 +79,8 @@ class SearchSource:
         result = search_text(self._source.root, self._paths(), query, regex=self.regex, whole_word=self.whole_word,
                              limit=MAX_HITS, source=self._source, cancellation=cancellation)
         self._last = (query, result)
-        return [Item(hit.path, self._label(hit, query), hit.line, hit.column) for hit in result.hits]
+        return [Item(hit.path, self._label(hit, query), hit.line, hit.column) for hit in result.hits
+                if self._skip is None or not self._skip(hit)]
 
     def preview(self, item: Item) -> Document | None:
         try:

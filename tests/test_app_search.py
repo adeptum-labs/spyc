@@ -187,6 +187,56 @@ async def test_d_on_the_definition_itself_shows_the_uses_instead(tmp_path):
         await until(pilot, lambda: isinstance(app.screen, Picker) and app.screen.query_one("Input").value == "unique_fn")
 
 
+def usages_ready(app, count):
+    return isinstance(app.screen, Picker) and len(picker_rows(app)) == count
+
+
+async def test_u_lists_where_the_name_is_used_without_the_line_that_defines_it_and_enter_jumps_there(tmp_path):
+    write_files(tmp_path / "proj", SYMBOL_FILES)
+    app = make_app(tmp_path / "proj", tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await indexed(pilot)
+        app.open_file("src/only.py")
+        await pilot.pause()
+        app.query_one(CodeView).goto(1, 4)
+        await pilot.press("u")
+        await until(pilot, lambda: usages_ready(app, 1))
+        assert "src/user.py:1" in picker_rows(app)[0]
+        await pilot.press("enter")
+        await until(pilot, lambda: not isinstance(app.screen, Picker))
+        assert app.query_one(CodeView).display_path == "src/user.py"
+        await pilot.press("left_square_bracket")
+        await until(pilot, lambda: app.query_one(CodeView).display_path == "src/only.py")
+
+
+async def test_u_leaves_out_every_definition_of_the_name_even_in_other_files(tmp_path):
+    write_files(tmp_path / "proj", SYMBOL_FILES)
+    app = make_app(tmp_path / "proj", tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await indexed(pilot)
+        app.open_file("src/app.py")
+        await pilot.pause()
+        app.query_one(CodeView).goto(6, 4)
+        await pilot.press("u")
+        await until(pilot, lambda: usages_ready(app, 1))
+        assert "src/app.py:6" in picker_rows(app)[0]
+
+
+async def test_u_needs_the_cursor_on_a_name(tmp_path, monkeypatch):
+    write_files(tmp_path / "proj", {"a.py": "x = (\n"})
+    notes = []
+    monkeypatch.setattr(SpycApp, "notify", lambda self, message, **options: notes.append(message))
+    app = make_app(tmp_path / "proj", tmp_path)
+    async with app.run_test(size=SIZE) as pilot:
+        await ready(pilot)
+        app.open_file("a.py")
+        await pilot.pause()
+        app.query_one(CodeView).goto(1, 4)
+        await pilot.press("u")
+        await pilot.pause()
+        assert notes == ["Put the cursor on a name first"] and not isinstance(app.screen, Picker)
+
+
 async def test_d_needs_the_cursor_on_a_name(tmp_path, monkeypatch):
     write_files(tmp_path / "proj", {"a.py": "x = (\n"})
     notes = []

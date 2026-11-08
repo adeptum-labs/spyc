@@ -65,6 +65,27 @@ def test_a_crossing_is_yellow_only_where_every_wire_through_it_is_in_a_cycle():
             assert not any("yellow" in str(span.style) and span.start <= x < span.end for span in lines[y].spans)
 
 
+def test_with_a_reach_its_boxes_and_the_wires_between_them_stand_out_and_all_else_is_dim():
+    assert {"reverse bold", "bold cyan", "dim"} <= styles(DRAWING, "left") and "reverse bold" in styles(DRAWING, "low")
+    reached_lines = paint(DRAWING, "low", frozenset({"left", "right", "top"}))
+    assert "dim" not in {str(span.style) for line in reached_lines for span in line.spans}
+    assert "bold cyan" in {str(span.style) for line in reached_lines for span in line.spans}
+    only_left = paint(DRAWING, "low", frozenset({"left"}))
+    assert "dim" in {str(span.style) for line in only_left for span in line.spans}
+
+
+def test_with_a_reach_that_is_empty_the_selected_box_stands_alone_in_a_dim_drawing():
+    found = {str(span.style) for line in paint(DRAWING, "low", frozenset()) for span in line.spans}
+    assert found == {"reverse bold", "dim"}
+
+
+def test_a_painter_with_a_reach_gives_the_same_lines_as_painting_from_scratch():
+    painter = Painter(DRAWING)
+    for selected, reach in [("low", frozenset({"left", "right"})), ("low", frozenset({"left"})), ("left", None),
+                            ("top", frozenset({"left", "low"})), ("low", frozenset({"left", "right"}))]:
+        assert [line.spans for line in painter.paint(selected, reach)] == [line.spans for line in paint(DRAWING, selected, reach)]
+
+
 def test_a_painter_gives_the_same_lines_as_painting_and_does_not_paint_a_row_again_that_did_not_change():
     painter = Painter(DRAWING)
     first = painter.paint("left")

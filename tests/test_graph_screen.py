@@ -249,6 +249,37 @@ async def test_a_new_graph_keeps_the_scope_and_selection_if_they_still_exist_and
         assert app.screen.selected is not None and app.screen.scope != ACME
 
 
+async def test_i_shows_what_depends_on_the_selected_box_and_then_what_it_depends_on_and_then_stops():
+    app = GraphApp(GRAPH)
+    async with app.run_test(size=SIZE) as pilot:
+        await pilot.pause()
+        app.screen.selected = MODEL
+        await pilot.press("i")
+        assert app.screen._reach() == {ORDER, BILLING, WEB} and "3 dependents in all" in header(app)
+        await pilot.press("i")
+        assert app.screen._reach() == frozenset() and "0 dependencies in all" in header(app)
+        await pilot.press("i")
+        assert app.screen._reach() is None and "in all" not in header(app)
+
+
+async def test_the_impact_of_a_box_in_a_cycle_includes_the_rest_of_the_cycle():
+    app = GraphApp(GRAPH)
+    async with app.run_test(size=SIZE) as pilot:
+        await pilot.pause()
+        app.screen.selected = ORDER
+        await pilot.press("i")
+        assert app.screen._reach() == {BILLING, ORDER, WEB} and "2 dependents in all" in header(app)
+
+
+async def test_going_into_a_box_turns_the_impact_off():
+    app = GraphApp(GRAPH)
+    async with app.run_test(size=SIZE) as pilot:
+        await pilot.pause()
+        app.screen.selected = ORDER
+        await pilot.press("i", "enter")
+        assert app.screen._reach() is None
+
+
 async def test_names_with_control_characters_are_shown_as_symbols():
     graph = DependencyGraph({"a/A.java": facts("p\x1b[2J", ["A"], [Import("q.B")]), "b/B.java": facts("q", ["B"])})
     app = GraphApp(graph)
